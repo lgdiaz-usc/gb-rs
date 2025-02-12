@@ -1,3 +1,6 @@
+use crate::vbu::Tile::Tile;
+
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
@@ -67,43 +70,30 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
+            let top = ctx.available_rect().top();
+            let left = ctx.available_rect().left();
+            let painter = ui.painter();
 
-            ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(&mut self.label);
-            });
+            let test: Tile = Tile::new([0x3c7e, 0x4242, 0x4242, 0x4242, 0x7e5e, 0x7e0a, 0x7c56, 0x387c]);
+            parse_tile(test);
 
-            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                self.value += 1.0;
-            }
-
-            ui.separator();
-
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/main/",
-                "Source code."
-            ));
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                powered_by_egui_and_eframe(ui);
-                egui::warn_if_debug_build(ui);
-            });
+            painter.rect(egui::Rect { min: egui::pos2(0.0 + left, 10.0 + top), max: egui::pos2(100.0 + left, 100.0 + top) }, egui::Rounding::ZERO, egui::Color32::RED, egui::Stroke::NONE);
         });
     }
 }
 
-fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
-        ui.label("Powered by ");
-        ui.hyperlink_to("egui", "https://github.com/emilk/egui");
-        ui.label(" and ");
-        ui.hyperlink_to(
-            "eframe",
-            "https://github.com/emilk/egui/tree/master/crates/eframe",
-        );
-        ui.label(".");
-    });
+fn parse_tile(tile: Tile) {
+    for row in tile.pixels {
+        for pixel in row {
+            match pixel {
+                0 => print!("."),
+                1 => print!("░"),
+                2 => print!("▒"),
+                3 => print!("▓"),
+                _ => print!("?")
+            }
+        }
+        println!();
+    }
+    println!("\n");
 }
