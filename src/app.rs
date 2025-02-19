@@ -1,49 +1,11 @@
-use crate::vbu::Tile::Tile;
+use std::sync::atomic::Ordering;
+
+pub mod gbemu;
+pub mod cartridge_info;
+pub use cartridge_info::CGBState;
 
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(default)] // if we add new fields, give them default values when deserializing old state
-pub struct TemplateApp {
-    // Example stuff:
-    label: String,
-
-    #[serde(skip)] // This how you opt-out of serialization of a field
-    value: f32,
-}
-
-impl Default for TemplateApp {
-    fn default() -> Self {
-        Self {
-            // Example stuff:
-            label: "Hello World!".to_owned(),
-            value: 2.7,
-        }
-    }
-}
-
-impl TemplateApp {
-    /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // This is also where you can customize the look and feel of egui using
-        // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
-
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        }
-
-        Default::default()
-    }
-}
-
-impl eframe::App for TemplateApp {
-    /// Called by the frame work to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, self);
-    }
-
+impl eframe::App for gbemu::GBEmu {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
@@ -53,16 +15,24 @@ impl eframe::App for TemplateApp {
             // The top panel is often a good place for a menu bar:
 
             egui::menu::bar(ui, |ui| {
-                // NOTE: no File->Quit on web pages!
-                let is_web = cfg!(target_arch = "wasm32");
-                if !is_web {
-                    ui.menu_button("File", |ui| {
+                ui.menu_button("File", |ui| {
+                    if ui.button("Open Rom").clicked() {
+                        if let Some(path) = rfd::FileDialog::new().add_filter("GameBoy Roms", &["gb", "gbc"]).pick_file() {
+                            let mut lock = self.rom_file_path.lock().unwrap();
+                            *lock = Some(path.display().to_string());
+                            drop(lock);
+                            self.file_changed.store(true, Ordering::Relaxed);
+                        }
+                    }
+                    // NOTE: no File->Quit on web pages!
+                    let is_web = cfg!(target_arch = "wasm32");
+                    if !is_web {
                         if ui.button("Quit").clicked() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
-                    });
-                    ui.add_space(16.0);
-                }
+                    }
+                });
+                ui.add_space(16.0);
 
                 egui::widgets::global_theme_preference_buttons(ui);
             });
@@ -70,19 +40,85 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
-            let top = ctx.available_rect().top();
+            /*let top = ctx.available_rect().top();
             let left = ctx.available_rect().left();
             let painter = ui.painter();
 
-            let test: Tile = Tile::new([0x3c7e, 0x4242, 0x4242, 0x4242, 0x7e5e, 0x7e0a, 0x7c56, 0x387c]);
-            parse_tile(test);
-
             painter.rect(egui::Rect { min: egui::pos2(0.0 + left, 10.0 + top), max: egui::pos2(100.0 + left, 100.0 + top) }, egui::Rounding::ZERO, egui::Color32::RED, egui::Stroke::NONE);
+*/
+            let lock = self.rom_file_path.lock().unwrap();
+            if let Some(picked_path) = lock.clone() {
+                ui.horizontal(|ui| {
+                    ui.label("Loaded Rom: ");
+                    ui.monospace(picked_path);
+                });
+            }
+            else {
+                ui.horizontal(|ui| {
+                    ui.label("No rom detected!");
+                });
+            }
+            drop(lock);
+            let lock = self.rom_info.lock().unwrap();
+            if let Some(info) = lock.clone() {
+                ui.horizontal(|ui| {
+                    ui.label("Title: ");
+                    ui.monospace(info.title);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Manufacturer Code: ");
+                    ui.monospace(info.manufacturer_code);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Gameboy Color Compatibility: ");
+                    ui.monospace(match info.cgb_flag {
+                        CGBState::Monochrome => "GameBoy only",
+                        CGBState::Color => "GameBoy Color only",
+                        CGBState::Both => "Gameboy Color enhancement supported"
+                    });
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Super GameBoy support: ");
+                    ui.monospace(format!("{}", info.is_sgb));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Licensee: ");
+                    ui.monospace(info.licensee);
+                });
+                ui.horizontal(|ui|{
+                    ui.label("Mapper Code:");
+                    ui.label(format!("{}", info.cartridge_type));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Rom Size: ");
+                    ui.label(format!("{} bytes ({} banks)", info.rom_size, info.rom_banks));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Ram Size: ");
+                    ui.label(format!("{} bytes ({} banks)", info.ram_size, info.ram_banks));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Can be sold in Japan: ");
+                    ui.monospace(format!("{}", info.overseas_only));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Version: ");
+                    ui.monospace(format!("{}", info.version_number));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Header Checksum: ");
+                    ui.monospace(format!("{}", info.header_checksum));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Global Chacksum: ");
+                    ui.monospace(format!("{}", info.global_checksum));
+                });
+            }
         });
     }
 }
 
-fn parse_tile(tile: Tile) {
+/*fn parse_tile(tile: Tile) {
     for row in tile.pixels {
         for pixel in row {
             match pixel {
@@ -96,4 +132,4 @@ fn parse_tile(tile: Tile) {
         println!();
     }
     println!("\n");
-}
+}*/
