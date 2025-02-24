@@ -1,3 +1,5 @@
+use std::{fs::File, io::Bytes};
+
 pub struct NoMBC {
     rom_bank: [u8; 0x8000],
     ram_bank: Option<[u8; 0x2000]>
@@ -27,5 +29,20 @@ impl NoMBC {
         if self.ram_bank != None {
             self.ram_bank.unwrap()[address as usize] = value;
         }
+    }
+
+    pub fn prepare_rom(mut file: Bytes<File>) -> [u8; 0x8000] {
+        let mut rom_data = [0; 0x8000];
+        let mut iter = 0..0x8000;
+        while let Some(i) = iter.next() {
+            rom_data[i] = match file.next() {
+                Some(val) => val.expect("Invalid byte?"),
+                None => {
+                    panic!("Invalid rom size!")
+                },
+            };
+        }
+    
+        rom_data
     }
 }

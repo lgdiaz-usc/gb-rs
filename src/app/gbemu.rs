@@ -1,6 +1,10 @@
 use core::time;
 use std::{fs::File, io::Read, sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex}, thread};
-use super::cartridge_info::{CartridgeInfo};
+use console::GBConsole;
+
+use super::cartridge_info::CartridgeInfo;
+
+mod console;
 
 #[derive(Clone)]
 pub struct GBEmu {
@@ -76,6 +80,9 @@ impl GBEmu {
             drop(lock);
         }
 
+        drop(rom_file);
+        let mut rom_file = File::open(current_file_path.clone()).expect("ERROR: File not found!").bytes();
+        let console = GBConsole::new(info, rom_file);
     }
 }
 
