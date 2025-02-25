@@ -182,4 +182,129 @@ impl GBConsole {
             //TODO: Implement Interrupt Enable register
         }
     }
+
+    fn execute_instruction(&mut self) -> u8 {
+        let mut instruction_size = 1;
+        let mut cycle_count = 4;
+        let block = self.program_counter & 0o300;
+        match block {
+            0o000 => { //Block 0
+                match self.program_counter & 0o007 {
+                    0o002 => {
+                        //LD [R16], a | LD a, [R16] | LD [HL+], a | ld a, [HL+] | ld [HL-], a | LD a, [HL-]
+                        cycle_count = 8;
+                        let address = match self.program_counter & 0o060 {
+                            0o000 => u16::from_le_bytes([self.b, self.c]),
+                            0o020 => u16::from_le_bytes([self.d, self.e]),
+                            0o040 => {
+                                let address_temp = u16::from_le_bytes([self.h, self.l]);
+                                (self.h, self.l) = (address_temp + 1).to_le_bytes().into();
+                                address_temp
+                            }
+                            0o060 => {
+                                let address_temp = u16::from_le_bytes([self.h, self.l]);
+                                (self.h, self.l) = (address_temp - 1).to_le_bytes().into();
+                                address_temp
+                            }
+                            _ => panic!("ERROR: address octet out of bounds!")
+                        };
+
+                        if self.program_counter & 0o010 > 0 {
+                            self.a = self.read(address);
+                        }
+                        else {
+                            self.write(address, self.a);
+                        }
+                    }
+                    0o006 => {
+                        //LD r8, n8 | LD [HL], r8
+                        instruction_size = 2;
+                        cycle_count = 8;
+
+                        let mut is_hl = false;
+                        let value = self.read(self.program_counter + 1);
+                        let register = match self.program_counter & 0o007 {
+                            0o000 => &mut self.b,
+                            0o001 => &mut self.c,
+                            0o002 => &mut self.d,
+                            0o003 => &mut self.e,
+                            0o004 => &mut self.h,
+                            0o005 => &mut self.l,
+                            0o006 => {
+                                is_hl = true;
+                                cycle_count = 12;
+                                &mut self.b //<== Throwaway value
+                            }
+                            0o007 => &mut self.a,
+                            _ => panic!("ERROR: Register octet out of bounds!")
+                        };
+
+                        if !is_hl {
+                            *register = value;
+                        }
+                        else {
+                            let address = u16::from_le_bytes([self.h, self.l]);
+                            self.write(address, value);
+                        }
+                    }
+                    _ => panic!("ERROR: Column octet out of bounds!")
+                }
+            }
+
+            0o100 => { //Block 1
+                //LD r8, r8, | LD r8, [HL] | LD [HL], r8
+                let source = match self.program_counter & 0o007 {
+                    0o000 => self.b,
+                    0o001 => self.c,
+                    0o002 => self.d,
+                    0o003 => self.e,
+                    0o004 => self.h,
+                    0o005 => self.l,
+                    0o006 => {
+                        cycle_count = 8;
+                        self.read(u16::from_le_bytes([self.h, self.l]))
+                    }
+                    0o007 => self.a,
+                    _ => panic!("ERROR: Source octet out of bounds!")
+                };
+
+                let mut is_hl = false;
+                let destination = match self.program_counter & 0o070 {
+                    0o000 => &mut self.b,
+                    0o010 => &mut self.c,
+                    0o020 => &mut self.d,
+                    0o030 => &mut self.e,
+                    0o040 => &mut self.h,
+                    0o050 => &mut self.l,
+                    0o060 => {
+                        is_hl = true;
+                        cycle_count = 8;
+                        &mut self.b //<== throway value to get out of the match (Will not be used!)
+                    }
+                    0o070 => &mut self.a,
+                    _ =>panic!("Error: Destination octet out of bounds!")
+                };
+
+                if !is_hl {
+                    *destination = source;
+                }
+                else {
+                    let address = u16::from_le_bytes([self.h, self.l]);
+                    self.write(address, source);
+                }
+            }
+
+            0o200 => { //Blok 2
+
+            }
+            
+            0o300 => { //Block 3
+
+            }
+            _ => panic!("ERROR: Block octet out of bounds!")
+        }
+
+        self.program_counter += instruction_size;
+        cycle_count
+    }
 }
