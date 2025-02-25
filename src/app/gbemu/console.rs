@@ -183,6 +183,19 @@ impl GBConsole {
         }
     }
 
+    const ZERO_FLAG: u8 = 128;
+    const SUBTRACTION_FLAG: u8 = 64;
+    const HALF_CARRY_FLAG: u8 = 32;
+    const CARRY_FLAG: u8 = 16;
+    fn flag_toggle(&mut self, condition: bool, flag: u8) {
+        if condition {
+            self.flags |= flag;
+        }
+        else {
+            self.flags &= 0xFF ^ flag;
+        }
+    }
+
     fn execute_instruction(&mut self) -> u8 {
         let mut instruction_size = 1;
         let mut cycle_count = 4;
