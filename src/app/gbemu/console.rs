@@ -194,16 +194,16 @@ impl GBConsole {
                         //LD [R16], a | LD a, [R16] | LD [HL+], a | ld a, [HL+] | ld [HL-], a | LD a, [HL-]
                         cycle_count = 8;
                         let address = match self.program_counter & 0o060 {
-                            0o000 => u16::from_le_bytes([self.b, self.c]),
-                            0o020 => u16::from_le_bytes([self.d, self.e]),
+                            0o000 => u16::from_be_bytes([self.b, self.c]),
+                            0o020 => u16::from_be_bytes([self.d, self.e]),
                             0o040 => {
-                                let address_temp = u16::from_le_bytes([self.h, self.l]);
-                                (self.h, self.l) = (address_temp + 1).to_le_bytes().into();
+                                let address_temp = u16::from_be_bytes([self.h, self.l]);
+                                (self.h, self.l) = (address_temp + 1).to_be_bytes().into();
                                 address_temp
                             }
                             0o060 => {
-                                let address_temp = u16::from_le_bytes([self.h, self.l]);
-                                (self.h, self.l) = (address_temp - 1).to_le_bytes().into();
+                                let address_temp = u16::from_be_bytes([self.h, self.l]);
+                                (self.h, self.l) = (address_temp - 1).to_be_bytes().into();
                                 address_temp
                             }
                             _ => panic!("ERROR: address octet out of bounds!")
@@ -243,7 +243,7 @@ impl GBConsole {
                             *register = value;
                         }
                         else {
-                            let address = u16::from_le_bytes([self.h, self.l]);
+                            let address = u16::from_be_bytes([self.h, self.l]);
                             self.write(address, value);
                         }
                     }
@@ -262,7 +262,7 @@ impl GBConsole {
                     0o005 => self.l,
                     0o006 => {
                         cycle_count = 8;
-                        self.read(u16::from_le_bytes([self.h, self.l]))
+                        self.read(u16::from_be_bytes([self.h, self.l]))
                     }
                     0o007 => self.a,
                     _ => panic!("ERROR: Source octet out of bounds!")
@@ -289,7 +289,7 @@ impl GBConsole {
                     *destination = source;
                 }
                 else {
-                    let address = u16::from_le_bytes([self.h, self.l]);
+                    let address = u16::from_be_bytes([self.h, self.l]);
                     self.write(address, source);
                 }
             }
@@ -297,7 +297,7 @@ impl GBConsole {
             0o200 => { //Blok 2
 
             }
-            
+
             0o300 => { //Block 3
 
             }
