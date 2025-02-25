@@ -205,6 +205,55 @@ impl GBConsole {
         match block {
             0o000 => { //Block 0
                 match self.program_counter & 0o007 {
+                    0o001 => { //LD r16, n16 | LD SP, n16 | ADD HL, r16 | ADD HL, SP
+                        let is_add = self.program_counter & 0o010 > 0;
+                        let mut is_sp = false;
+
+                        let value;
+                        if !is_add {
+                            value = self.read_16(self.program_counter + 1);
+                        }
+                        else {
+                            value = u16::from_be_bytes([self.h, self.l]);
+                        }
+
+                        let (register_high, register_low) = match self.program_counter & 0o060 {
+                            0o000 => (&mut self.b, &mut self.c),
+                            0o020 => (&mut self.d, &mut self.e),
+                            0o040 => (&mut self.h, &mut self.l),
+                            0o060 => {
+                                is_sp = true;
+                                (&mut self.b, &mut self.c) //<== Throwaway value
+                            }
+                            _ => panic!("ERROR: Register octet out of bounds!")
+                        };
+
+                        if !is_add {
+                            cycle_count = 12;
+                            instruction_size = 3;
+                            if !is_sp {
+                                (*register_high, *register_low) = value.to_be_bytes().into();
+                            }
+                            else {
+                                self.stack_pointer = value;
+                            }
+                        }
+                        else {
+                            cycle_count = 8;
+                            if !is_sp {
+                                let register_value = u16::from_be_bytes([*register_high, *register_low]);
+                                (self.h, self.l) = (value + register_value).to_be_bytes().into();
+                            }
+                            else {
+                                (self.h, self.l) = (value + self.stack_pointer).to_be_bytes().into();
+                            }
+
+                            self.flag_toggle(false, N_SUBTRACTION_FLAG);
+                            let hl_now = u16::from_be_bytes([self.h, self.l]);
+                            self.flag_toggle((value & 0x0FFF) > (hl_now & 0x0FFF), H_HALF_CARRY_FLAG);
+                            self.flag_toggle(value > hl_now, C_CARRY_FLAG);
+                        }
+                    }
                     0o002 => {
                         //LD [R16], a | LD a, [R16] | LD [HL+], a | ld a, [HL+] | ld [HL-], a | LD a, [HL-]
                         cycle_count = 8;
