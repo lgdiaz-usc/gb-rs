@@ -189,6 +189,16 @@ impl GBConsole {
         }
     }
 
+    fn write_16(&mut self, address: u16, value: u16) {
+        if address == 0xFFFF {
+            panic!("ERROR: Address out of bounds");
+        }
+
+        let (msb, lsb) = value.to_be_bytes().into();
+        self.write(address, lsb);
+        self.write(address + 1, msb);
+    }
+
     fn flag_toggle(&mut self, condition: bool, flag: u8) {
         if condition {
             self.flags |= flag;
@@ -201,112 +211,247 @@ impl GBConsole {
     fn execute_instruction(&mut self) -> u8 {
         let mut instruction_size = 1;
         let mut cycle_count = 4;
-        let block = self.program_counter & 0o300;
-        match block {
-            0o000 => { //Block 0
-                match self.program_counter & 0o007 {
-                    0o001 => { //LD r16, n16 | LD SP, n16 | ADD HL, r16 | ADD HL, SP
-                        let is_add = self.program_counter & 0o010 > 0;
-                        let mut is_sp = false;
+        
+        match self.program_counter {
+            //Block 0 one-offs
+            0o000 => {}, //NOP
+            0o010 => { //LD [n16], SP
+                cycle_count = 20;
+                instruction_size = 3;
+                let address = self.read_16(self.program_counter + 1);
+                self.write_16(address, self.stack_pointer);
+            }
+            0o020 => {
+                //TODO: Implement STOP instruction
+            }
+            0o047 => {
+                //TODO: Implement DAA instruction
+            }
+            0o057 => { //CPL
+                self.a = self.a ^ 0xFF;
+                self.flag_toggle(true, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+            }
+            0o067 => { //SCF
+                self.flag_toggle(true, C_CARRY_FLAG);
+                self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+            } 
+            0o077 => { //CCF
+                self.flag_toggle(self.flags & C_CARRY_FLAG == 0, C_CARRY_FLAG);
+                self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+            }
 
-                        let value;
-                        if !is_add {
-                            value = self.read_16(self.program_counter + 1);
-                        }
-                        else {
-                            value = u16::from_be_bytes([self.h, self.l]);
-                        }
+            //Block 1 one-offs
+            0o166 => {
+                //TODO: Implement HALT instruction
+            }
 
-                        let (register_high, register_low) = match self.program_counter & 0o060 {
-                            0o000 => (&mut self.b, &mut self.c),
-                            0o020 => (&mut self.d, &mut self.e),
-                            0o040 => (&mut self.h, &mut self.l),
-                            0o060 => {
-                                is_sp = true;
-                                (&mut self.b, &mut self.c) //<== Throwaway value
-                            }
-                            _ => panic!("ERROR: Register octet out of bounds!")
-                        };
+            //Block 3 one-offs
+            0o313 => {
+                //TODO: Implement prefixed instructions
+            }
 
-                        if !is_add {
-                            cycle_count = 12;
-                            instruction_size = 3;
-                            if !is_sp {
-                                (*register_high, *register_low) = value.to_be_bytes().into();
+            //The rest of the instructions are interpreted through pattern-matching. The above are instructions which break those patterns.
+            _ => {
+                let block = self.program_counter & 0o300;
+                match block {
+                    0o000 => { //Block 0
+                        match self.program_counter & 0o007 {
+                            0o001 => { //LD r16, n16 | LD SP, n16 | ADD HL, r16 | ADD HL, SP
+                                let is_add = self.program_counter & 0o010 > 0;
+                                let mut is_sp = false;
+                            
+                                let value;
+                                if !is_add {
+                                    value = self.read_16(self.program_counter + 1);
+                                }
+                                else {
+                                    value = u16::from_be_bytes([self.h, self.l]);
+                                }
+                            
+                                let (register_high, register_low) = match self.program_counter & 0o060 {
+                                    0o000 => (&mut self.b, &mut self.c),
+                                    0o020 => (&mut self.d, &mut self.e),
+                                    0o040 => (&mut self.h, &mut self.l),
+                                    0o060 => {
+                                        is_sp = true;
+                                        (&mut self.b, &mut self.c) //<== Throwaway value
+                                    }
+                                    _ => panic!("ERROR: Register octet out of bounds!")
+                                };
+                            
+                                if !is_add {
+                                    cycle_count = 12;
+                                    instruction_size = 3;
+                                    if !is_sp {
+                                        (*register_high, *register_low) = value.to_be_bytes().into();
+                                    }
+                                    else {
+                                        self.stack_pointer = value;
+                                    }
+                                }
+                                else {
+                                    cycle_count = 8;
+                                    if !is_sp {
+                                        let register_value = u16::from_be_bytes([*register_high, *register_low]);
+                                        (self.h, self.l) = (value + register_value).to_be_bytes().into();
+                                    }
+                                    else {
+                                        (self.h, self.l) = (value + self.stack_pointer).to_be_bytes().into();
+                                    }
+                                
+                                    self.flag_toggle(false, N_SUBTRACTION_FLAG);
+                                    let hl_now = u16::from_be_bytes([self.h, self.l]);
+                                    self.flag_toggle((value & 0x0FFF) > (hl_now & 0x0FFF), H_HALF_CARRY_FLAG);
+                                    self.flag_toggle(value > hl_now, C_CARRY_FLAG);
+                                }
                             }
-                            else {
-                                self.stack_pointer = value;
+                            0o002 => {
+                                //LD [R16], a | LD a, [R16] | LD [HL+], a | ld a, [HL+] | ld [HL-], a | LD a, [HL-]
+                                cycle_count = 8;
+                                let address = match self.program_counter & 0o060 {
+                                    0o000 => u16::from_be_bytes([self.b, self.c]),
+                                    0o020 => u16::from_be_bytes([self.d, self.e]),
+                                    0o040 => {
+                                        let address_temp = u16::from_be_bytes([self.h, self.l]);
+                                        (self.h, self.l) = (address_temp + 1).to_be_bytes().into();
+                                        address_temp
+                                    }
+                                    0o060 => {
+                                        let address_temp = u16::from_be_bytes([self.h, self.l]);
+                                        (self.h, self.l) = (address_temp - 1).to_be_bytes().into();
+                                        address_temp
+                                    }
+                                    _ => panic!("ERROR: address octet out of bounds!")
+                                };
+                            
+                                if self.program_counter & 0o010 > 0 {
+                                    self.a = self.read(address);
+                                }
+                                else {
+                                    self.write(address, self.a);
+                                }
                             }
-                        }
-                        else {
-                            cycle_count = 8;
-                            if !is_sp {
-                                let register_value = u16::from_be_bytes([*register_high, *register_low]);
-                                (self.h, self.l) = (value + register_value).to_be_bytes().into();
+                            0o003 => { //INC r16, INC SP, DEC r16, DEC SP
+                                cycle_count = 8;
+                                let incrementor = if self.program_counter & 0o010 == 0 {1} else {u16::MAX};
+                                let mut is_sp = false;
+                                let (register_high, register_low) = match self.program_counter & 060 {
+                                    0o000 => (&mut self.b, &mut self.c),
+                                    0o020 => (&mut self.d, &mut self.e),
+                                    0o040 => (&mut self.h, &mut self.l),
+                                    0o060 => {
+                                        is_sp = true;
+                                        (&mut self.b, &mut self.c) //<== throwaway value
+                                    },
+                                    _ => panic!("ERROR: register octet out of bounds!")
+                                };
+                            
+                                if !is_sp {
+                                    let value = u16::from_be_bytes([*register_high, *register_low]) + incrementor;
+                                    (*register_high, *register_low) = value.to_be_bytes().into();
+                                }
+                                else {
+                                    self.stack_pointer += incrementor;
+                                }
                             }
-                            else {
-                                (self.h, self.l) = (value + self.stack_pointer).to_be_bytes().into();
+                            0o004 | 0o005 => { //INC r8, INC [HL], DEC r8, DEC [HL]
+                                let mut is_hl = false;
+                                let incrementor = if self.program_counter & 007 == 0o004 {1} else {u8::MAX};
+                                let register = match self.program_counter & 0o070 {
+                                    0o000 => &mut self.b,
+                                    0o010 => &mut self.c,
+                                    0o020 => &mut self.d,
+                                    0o030 => &mut self.e,
+                                    0o040 => &mut self.h,
+                                    0o050 => &mut self.l,
+                                    0o060 => {
+                                        is_hl = true;
+                                        cycle_count = 12;
+                                        &mut self.b //<== Throwaway value
+                                    }
+                                    0o070 => &mut self.a,
+                                    _ => panic!("ERROR: Register octet out of bounds!")
+                                };
+                            
+                                let register_before;
+                                let register_after;
+                                if !is_hl {
+                                    register_before = *register;
+                                    *register += incrementor;
+                                    register_after = *register;
+                                }
+                                else {
+                                    let address = u16::from_be_bytes([self.h, self.l]);
+                                    register_before = self.read(address);
+                                    let value = register_before + incrementor;
+                                    self.write(address, value);
+                                    register_after = value;
+                                }
+                                self.flag_toggle(register_after == 0, Z_ZERO_FLAG);
+                                self.flag_toggle(incrementor == 1, N_SUBTRACTION_FLAG);
+                            
+                                let half_carry_condition = if incrementor == 1 {
+                                    (register_before & 0b1111 > 0) && (register_after & 0b1111 == 0)
+                                }
+                                else {
+                                    (register_before & 0b1111 == 0) && (register_after & 0b1111 > 0)
+                                };
+                                self.flag_toggle(half_carry_condition, H_HALF_CARRY_FLAG);
                             }
-
-                            self.flag_toggle(false, N_SUBTRACTION_FLAG);
-                            let hl_now = u16::from_be_bytes([self.h, self.l]);
-                            self.flag_toggle((value & 0x0FFF) > (hl_now & 0x0FFF), H_HALF_CARRY_FLAG);
-                            self.flag_toggle(value > hl_now, C_CARRY_FLAG);
+                            0o006 => {
+                                //LD r8, n8 | LD [HL], r8
+                                instruction_size = 2;
+                                cycle_count = 8;
+                            
+                                let mut is_hl = false;
+                                let value = self.read(self.program_counter + 1);
+                                let register = match self.program_counter & 0o007 {
+                                    0o000 => &mut self.b,
+                                    0o001 => &mut self.c,
+                                    0o002 => &mut self.d,
+                                    0o003 => &mut self.e,
+                                    0o004 => &mut self.h,
+                                    0o005 => &mut self.l,
+                                    0o006 => {
+                                        is_hl = true;
+                                        cycle_count = 12;
+                                        &mut self.b //<== Throwaway value
+                                    }
+                                    0o007 => &mut self.a,
+                                    _ => panic!("ERROR: Register octet out of bounds!")
+                                };
+                            
+                                if !is_hl {
+                                    *register = value;
+                                }
+                                else {
+                                    let address = u16::from_be_bytes([self.h, self.l]);
+                                    self.write(address, value);
+                                }
+                            }
+                            _ => panic!("ERROR: Column octet out of bounds!")
                         }
                     }
-                    0o002 => {
-                        //LD [R16], a | LD a, [R16] | LD [HL+], a | ld a, [HL+] | ld [HL-], a | LD a, [HL-]
-                        cycle_count = 8;
-                        let address = match self.program_counter & 0o060 {
-                            0o000 => u16::from_be_bytes([self.b, self.c]),
-                            0o020 => u16::from_be_bytes([self.d, self.e]),
-                            0o040 => {
-                                let address_temp = u16::from_be_bytes([self.h, self.l]);
-                                (self.h, self.l) = (address_temp + 1).to_be_bytes().into();
-                                address_temp
+                
+                    0o100 => { //Block 1
+                        //LD r8, r8, | LD r8, [HL] | LD [HL], r8
+                        let source = match self.program_counter & 0o007 {
+                            0o000 => self.b,
+                            0o001 => self.c,
+                            0o002 => self.d,
+                            0o003 => self.e,
+                            0o004 => self.h,
+                            0o005 => self.l,
+                            0o006 => {
+                                cycle_count = 8;
+                                self.read(u16::from_be_bytes([self.h, self.l]))
                             }
-                            0o060 => {
-                                let address_temp = u16::from_be_bytes([self.h, self.l]);
-                                (self.h, self.l) = (address_temp - 1).to_be_bytes().into();
-                                address_temp
-                            }
-                            _ => panic!("ERROR: address octet out of bounds!")
+                            0o007 => self.a,
+                            _ => panic!("ERROR: Source octet out of bounds!")
                         };
-
-                        if self.program_counter & 0o010 > 0 {
-                            self.a = self.read(address);
-                        }
-                        else {
-                            self.write(address, self.a);
-                        }
-                    }
-                    0o003 => { //INC r16, INC SP, DEC r16, DEC SP
-                        cycle_count = 8;
-                        let incrementor = if self.program_counter & 0o010 == 0 {1} else {u16::MAX};
-                        let mut is_sp = false;
-                        let (register_high, register_low) = match self.program_counter & 060 {
-                            0o000 => (&mut self.b, &mut self.c),
-                            0o020 => (&mut self.d, &mut self.e),
-                            0o040 => (&mut self.h, &mut self.l),
-                            0o060 => {
-                                is_sp = true;
-                                (&mut self.b, &mut self.c) //<== throwaway value
-                            },
-                            _ => panic!("ERROR: register octet out of bounds!")
-                        };
-
-                        if !is_sp {
-                            let value = u16::from_be_bytes([*register_high, *register_low]) + incrementor;
-                            (*register_high, *register_low) = value.to_be_bytes().into();
-                        }
-                        else {
-                            self.stack_pointer += incrementor;
-                        }
-                    }
-                    0o004 | 0o005 => { //INC r8, INC [HL], DEC r8, DEC [HL]
+                    
                         let mut is_hl = false;
-                        let incrementor = if self.program_counter & 007 == 0o004 {1} else {u8::MAX};
-                        let register = match self.program_counter & 0o070 {
+                        let destination = match self.program_counter & 0o070 {
                             0o000 => &mut self.b,
                             0o010 => &mut self.c,
                             0o020 => &mut self.d,
@@ -315,125 +460,34 @@ impl GBConsole {
                             0o050 => &mut self.l,
                             0o060 => {
                                 is_hl = true;
-                                cycle_count = 12;
-                                &mut self.b //<== Throwaway value
+                                cycle_count = 8;
+                                &mut self.b //<== throway value to get out of the match (Will not be used!)
                             }
                             0o070 => &mut self.a,
-                            _ => panic!("ERROR: Register octet out of bounds!")
+                            _ =>panic!("Error: Destination octet out of bounds!")
                         };
-
-                        let register_before;
-                        let register_after;
+                    
                         if !is_hl {
-                            register_before = *register;
-                            *register += incrementor;
-                            register_after = *register;
+                            *destination = source;
                         }
                         else {
                             let address = u16::from_be_bytes([self.h, self.l]);
-                            register_before = self.read(address);
-                            let value = register_before + incrementor;
-                            self.write(address, value);
-                            register_after = value;
-                        }
-                        self.flag_toggle(register_after == 0, Z_ZERO_FLAG);
-                        self.flag_toggle(incrementor == 1, N_SUBTRACTION_FLAG);
-
-                        let half_carry_condition = if incrementor == 1 {
-                            (register_before & 0b1111 > 0) && (register_after & 0b1111 == 0)
-                        }
-                        else {
-                            (register_before & 0b1111 == 0) && (register_after & 0b1111 > 0)
-                        };
-                        self.flag_toggle(half_carry_condition, H_HALF_CARRY_FLAG);
-                    }
-                    0o006 => {
-                        //LD r8, n8 | LD [HL], r8
-                        instruction_size = 2;
-                        cycle_count = 8;
-
-                        let mut is_hl = false;
-                        let value = self.read(self.program_counter + 1);
-                        let register = match self.program_counter & 0o007 {
-                            0o000 => &mut self.b,
-                            0o001 => &mut self.c,
-                            0o002 => &mut self.d,
-                            0o003 => &mut self.e,
-                            0o004 => &mut self.h,
-                            0o005 => &mut self.l,
-                            0o006 => {
-                                is_hl = true;
-                                cycle_count = 12;
-                                &mut self.b //<== Throwaway value
-                            }
-                            0o007 => &mut self.a,
-                            _ => panic!("ERROR: Register octet out of bounds!")
-                        };
-
-                        if !is_hl {
-                            *register = value;
-                        }
-                        else {
-                            let address = u16::from_be_bytes([self.h, self.l]);
-                            self.write(address, value);
+                            self.write(address, source);
                         }
                     }
-                    _ => panic!("ERROR: Column octet out of bounds!")
+                
+                    0o200 => { //Blok 2
+                    
+                    }
+                
+                    0o300 => { //Block 3
+                    
+                    }
+                    _ => panic!("ERROR: Block octet out of bounds!")
                 }
             }
-
-            0o100 => { //Block 1
-                //LD r8, r8, | LD r8, [HL] | LD [HL], r8
-                let source = match self.program_counter & 0o007 {
-                    0o000 => self.b,
-                    0o001 => self.c,
-                    0o002 => self.d,
-                    0o003 => self.e,
-                    0o004 => self.h,
-                    0o005 => self.l,
-                    0o006 => {
-                        cycle_count = 8;
-                        self.read(u16::from_be_bytes([self.h, self.l]))
-                    }
-                    0o007 => self.a,
-                    _ => panic!("ERROR: Source octet out of bounds!")
-                };
-
-                let mut is_hl = false;
-                let destination = match self.program_counter & 0o070 {
-                    0o000 => &mut self.b,
-                    0o010 => &mut self.c,
-                    0o020 => &mut self.d,
-                    0o030 => &mut self.e,
-                    0o040 => &mut self.h,
-                    0o050 => &mut self.l,
-                    0o060 => {
-                        is_hl = true;
-                        cycle_count = 8;
-                        &mut self.b //<== throway value to get out of the match (Will not be used!)
-                    }
-                    0o070 => &mut self.a,
-                    _ =>panic!("Error: Destination octet out of bounds!")
-                };
-
-                if !is_hl {
-                    *destination = source;
-                }
-                else {
-                    let address = u16::from_be_bytes([self.h, self.l]);
-                    self.write(address, source);
-                }
-            }
-
-            0o200 => { //Blok 2
-
-            }
-
-            0o300 => { //Block 3
-
-            }
-            _ => panic!("ERROR: Block octet out of bounds!")
         }
+        
 
         self.program_counter += instruction_size;
         cycle_count
