@@ -224,6 +224,46 @@ impl GBConsole {
             0o020 => {
                 //TODO: Implement STOP instruction
             }
+            0o007 => { //RLCA
+                self.flag_toggle(false, Z_ZERO_FLAG | N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+                self.flag_toggle(self.a & 0x80 > 0, C_CARRY_FLAG);
+
+                self.a <<= 1;
+                if self.flags & C_CARRY_FLAG > 0 {
+                    self.a += 0x01;
+                }
+            }
+            0o017 => { //RRCA
+                self.flag_toggle(false, Z_ZERO_FLAG | N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+                self.flag_toggle(self.a & 0x01 > 0, C_CARRY_FLAG);
+
+                self.a >>= 1;
+                if self.flags & C_CARRY_FLAG > 0 {
+                    self.a += 0x80;
+                }
+            }
+            0o027 => { //RLA
+                self.flag_toggle(false, Z_ZERO_FLAG | N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+                let will_carry = self.a & 0x80 > 0;
+
+                self.a <<= 1;
+                if self.flags & C_CARRY_FLAG > 0 {
+                    self.a += 0x01;
+                }
+
+                self.flag_toggle(will_carry, C_CARRY_FLAG);
+            }
+            0o037 => { //RRA
+                self.flag_toggle(false, Z_ZERO_FLAG | N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+                let will_carry = self.a & 0x01 > 0;
+
+                self.a >>= 1;
+                if self.flags & C_CARRY_FLAG > 0 {
+                    self.a += 0x80;
+                }
+
+                self.flag_toggle(will_carry, C_CARRY_FLAG);
+            }
             0o047 => {
                 //TODO: Implement DAA instruction
             }
