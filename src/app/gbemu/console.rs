@@ -1,5 +1,7 @@
 use std::{fs::File, io::Bytes};
 
+use serde::de::value;
+
 use crate::{app::cartridge_info::CartridgeInfo, mappers::{Mapper, NoMBC, MBC1}};
 
 pub struct GBConsole {
@@ -27,6 +29,10 @@ pub struct GBConsole {
     high_ram: [u8; 0x39],
 }
 
+const Z_ZERO_FLAG: u8 = 128;
+const N_SUBTRACTION_FLAG: u8 = 64;
+const H_HALF_CARRY_FLAG: u8 = 32;
+const C_CARRY_FLAG: u8 = 16;
 impl GBConsole {
     pub fn new(info: CartridgeInfo, file: Bytes<File>) -> Self {
         let cartridge: Mapper = match info.cartridge_type {
@@ -183,10 +189,6 @@ impl GBConsole {
         }
     }
 
-    const ZERO_FLAG: u8 = 128;
-    const SUBTRACTION_FLAG: u8 = 64;
-    const HALF_CARRY_FLAG: u8 = 32;
-    const CARRY_FLAG: u8 = 16;
     fn flag_toggle(&mut self, condition: bool, flag: u8) {
         if condition {
             self.flags |= flag;
@@ -228,6 +230,73 @@ impl GBConsole {
                         else {
                             self.write(address, self.a);
                         }
+                    }
+                    0o003 => { //INC r16, INC SP, DEC r16, DEC SP
+                        cycle_count = 8;
+                        let incrementor = if self.program_counter & 0o010 == 0 {1} else {u16::MAX};
+                        let mut is_sp = false;
+                        let (register_high, register_low) = match self.program_counter & 060 {
+                            0o000 => (&mut self.b, &mut self.c),
+                            0o020 => (&mut self.d, &mut self.e),
+                            0o040 => (&mut self.h, &mut self.l),
+                            0o060 => {
+                                is_sp = true;
+                                (&mut self.b, &mut self.c) //<== throwaway value
+                            },
+                            _ => panic!("ERROR: register octet out of bounds!")
+                        };
+
+                        if !is_sp {
+                            let value = u16::from_be_bytes([*register_high, *register_low]) + incrementor;
+                            (*register_high, *register_low) = value.to_be_bytes().into();
+                        }
+                        else {
+                            self.stack_pointer += incrementor;
+                        }
+                    }
+                    0o004 | 0o005 => { //INC r8, INC [HL], DEC r8, DEC [HL]
+                        let mut is_hl = false;
+                        let incrementor = if self.program_counter & 007 == 0o004 {1} else {u8::MAX};
+                        let register = match self.program_counter & 0o070 {
+                            0o000 => &mut self.b,
+                            0o010 => &mut self.c,
+                            0o020 => &mut self.d,
+                            0o030 => &mut self.e,
+                            0o040 => &mut self.h,
+                            0o050 => &mut self.l,
+                            0o060 => {
+                                is_hl = true;
+                                cycle_count = 12;
+                                &mut self.b //<== Throwaway value
+                            }
+                            0o070 => &mut self.a,
+                            _ => panic!("ERROR: Register octet out of bounds!")
+                        };
+
+                        let register_before;
+                        let register_after;
+                        if !is_hl {
+                            register_before = *register;
+                            *register += incrementor;
+                            register_after = *register;
+                        }
+                        else {
+                            let address = u16::from_be_bytes([self.h, self.l]);
+                            register_before = self.read(address);
+                            let value = register_before + incrementor;
+                            self.write(address, value);
+                            register_after = value;
+                        }
+                        self.flag_toggle(register_after == 0, Z_ZERO_FLAG);
+                        self.flag_toggle(incrementor == 1, N_SUBTRACTION_FLAG);
+
+                        let half_carry_condition = if incrementor == 1 {
+                            (register_before & 0b1111 > 0) && (register_after & 0b1111 == 0)
+                        }
+                        else {
+                            (register_before & 0b1111 == 0) && (register_after & 0b1111 > 0)
+                        };
+                        self.flag_toggle(half_carry_condition, H_HALF_CARRY_FLAG);
                     }
                     0o006 => {
                         //LD r8, n8 | LD [HL], r8
