@@ -517,7 +517,93 @@ impl GBConsole {
                     }
                 
                     0o200 => { //Blok 2
-                    
+                        let operand = match self.program_counter & 0o007 {
+                            0o000 => self.b,
+                            0o001 => self.c,
+                            0o002 => self.d,
+                            0o003 => self.e,
+                            0o004 => self.h,
+                            0o005 => self.l,
+                            0o006 => {
+                                cycle_count = 8;
+                                self.read(u16::from_be_bytes([self.h, self.l]))
+                            }
+                            0o007 => self.a,
+                            _ => panic!("ERROR: Operand octet out of bounds!")
+                        };
+
+                        match self.program_counter & 0o070 {
+                            0o000 => { //ADD A, r8 | ADD A, [HL]
+                                let temp_a = self.a;
+                                self.a += operand;
+
+                                self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                self.flag_toggle(false, N_SUBTRACTION_FLAG);
+                                self.flag_toggle((temp_a & 0x0F) > (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                self.flag_toggle(temp_a > self.a, C_CARRY_FLAG);
+                            }
+                            0o010 => { //ADC A, r8 | ADC A, [HL]
+                                let temp_a = self.a;
+                                self.a += operand;
+                                if self.flags & C_CARRY_FLAG > 0 {
+                                    self.a += 1;
+                                }
+
+                                self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                self.flag_toggle(false, N_SUBTRACTION_FLAG);
+                                self.flag_toggle((temp_a & 0x0F) > (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                self.flag_toggle(temp_a > self.a, C_CARRY_FLAG);
+                            }
+                            0o020 => { //SUB A, r8 | SUB A, [HL]
+                                let temp_a = self.a;
+                                self.a -= operand;
+
+                                self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                self.flag_toggle(true, N_SUBTRACTION_FLAG);
+                                self.flag_toggle((temp_a & 0x0F) < (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                self.flag_toggle(temp_a < self.a, C_CARRY_FLAG);
+                            }
+                            0o030 => { //SBC A, r8 | SBC A, [HL]
+                                let temp_a = self.a;
+                                self.a -= operand;
+                                if self.flags & C_CARRY_FLAG > 0 {
+                                    self.a -= 1;
+                                }
+
+                                self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                self.flag_toggle(true, N_SUBTRACTION_FLAG);
+                                self.flag_toggle((temp_a & 0x0F) < (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                self.flag_toggle(temp_a < self.a, C_CARRY_FLAG);
+                            }
+                            0o040 => { //AND A, r8 | AND A [HL]
+                                self.a &= operand;
+
+                                self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                self.flag_toggle(true, H_HALF_CARRY_FLAG);
+                                self.flag_toggle(false, N_SUBTRACTION_FLAG | C_CARRY_FLAG);
+                            }
+                            0o050 => { //XOR A, r8 | XOR A [HL]
+                                self.a ^= operand;
+
+                                self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG | C_CARRY_FLAG);
+                            }
+                            0o060 => { //OR A, r8 | OR A [HL]
+                                self.a |= operand;
+
+                                self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG | C_CARRY_FLAG);
+                            }
+                            0o070 => { //CP A, r8 | CP A, [HL]
+                                let comparison = self.a - operand;
+
+                                self.flag_toggle(comparison == 0, Z_ZERO_FLAG);
+                                self.flag_toggle(true, N_SUBTRACTION_FLAG);
+                                self.flag_toggle((self.a & 0x0F) < (comparison & 0x0F), H_HALF_CARRY_FLAG);
+                                self.flag_toggle(self.a < comparison, C_CARRY_FLAG);
+                            }
+                            _ => panic!("ERROR: Operator octet out of bounds!")
+                        }
                     }
                 
                     0o300 => { //Block 3
