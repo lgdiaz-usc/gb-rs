@@ -211,8 +211,10 @@ impl GBConsole {
     fn execute_instruction(&mut self) -> u8 {
         let mut instruction_size = 1;
         let mut cycle_count = 4;
+
+        let opcode = self.read(self.program_counter);
         
-        match self.program_counter {
+        match opcode {
             //Block 0 one-offs
             0o000 => {}, //NOP
             0o010 => { //LD [n16], SP
@@ -287,17 +289,17 @@ impl GBConsole {
 
             //Block 3 one-offs
             0o313 => {
-                //TODO: Implement prefixed instructions
+                cycle_count = self.execute_prefixed_instruction();
             }
 
             //The rest of the instructions are interpreted through pattern-matching. The above are instructions which break those patterns.
             _ => {
-                let block = self.program_counter & 0o300;
+                let block = opcode & 0o300;
                 match block {
                     0o000 => { //Block 0
-                        match self.program_counter & 0o007 {
+                        match opcode & 0o007 {
                             0o001 => { //LD r16, n16 | LD SP, n16 | ADD HL, r16 | ADD HL, SP
-                                let is_add = self.program_counter & 0o010 > 0;
+                                let is_add = opcode & 0o010 > 0;
                                 let mut is_sp = false;
                             
                                 let value;
@@ -308,7 +310,7 @@ impl GBConsole {
                                     value = u16::from_be_bytes([self.h, self.l]);
                                 }
                             
-                                let (register_high, register_low) = match self.program_counter & 0o060 {
+                                let (register_high, register_low) = match opcode & 0o060 {
                                     0o000 => (&mut self.b, &mut self.c),
                                     0o020 => (&mut self.d, &mut self.e),
                                     0o040 => (&mut self.h, &mut self.l),
@@ -348,7 +350,7 @@ impl GBConsole {
                             0o002 => {
                                 //LD [R16], a | LD a, [R16] | LD [HL+], a | ld a, [HL+] | ld [HL-], a | LD a, [HL-]
                                 cycle_count = 8;
-                                let address = match self.program_counter & 0o060 {
+                                let address = match opcode & 0o060 {
                                     0o000 => u16::from_be_bytes([self.b, self.c]),
                                     0o020 => u16::from_be_bytes([self.d, self.e]),
                                     0o040 => {
@@ -364,7 +366,7 @@ impl GBConsole {
                                     _ => panic!("ERROR: address octet out of bounds!")
                                 };
                             
-                                if self.program_counter & 0o010 > 0 {
+                                if opcode & 0o010 > 0 {
                                     self.a = self.read(address);
                                 }
                                 else {
@@ -373,9 +375,9 @@ impl GBConsole {
                             }
                             0o003 => { //INC r16, INC SP, DEC r16, DEC SP
                                 cycle_count = 8;
-                                let incrementor = if self.program_counter & 0o010 == 0 {1} else {u16::MAX};
+                                let incrementor = if opcode & 0o010 == 0 {1} else {u16::MAX};
                                 let mut is_sp = false;
-                                let (register_high, register_low) = match self.program_counter & 060 {
+                                let (register_high, register_low) = match opcode & 060 {
                                     0o000 => (&mut self.b, &mut self.c),
                                     0o020 => (&mut self.d, &mut self.e),
                                     0o040 => (&mut self.h, &mut self.l),
@@ -396,8 +398,8 @@ impl GBConsole {
                             }
                             0o004 | 0o005 => { //INC r8, INC [HL], DEC r8, DEC [HL]
                                 let mut is_hl = false;
-                                let incrementor = if self.program_counter & 007 == 0o004 {1} else {u8::MAX};
-                                let register = match self.program_counter & 0o070 {
+                                let incrementor = if opcode & 007 == 0o004 {1} else {u8::MAX};
+                                let register = match opcode & 0o070 {
                                     0o000 => &mut self.b,
                                     0o010 => &mut self.c,
                                     0o020 => &mut self.d,
@@ -445,7 +447,7 @@ impl GBConsole {
                             
                                 let mut is_hl = false;
                                 let value = self.read(self.program_counter + 1);
-                                let register = match self.program_counter & 0o007 {
+                                let register = match opcode & 0o007 {
                                     0o000 => &mut self.b,
                                     0o001 => &mut self.c,
                                     0o002 => &mut self.d,
@@ -475,7 +477,7 @@ impl GBConsole {
                 
                     0o100 => { //Block 1
                         //LD r8, r8, | LD r8, [HL] | LD [HL], r8
-                        let source = match self.program_counter & 0o007 {
+                        let source = match opcode & 0o007 {
                             0o000 => self.b,
                             0o001 => self.c,
                             0o002 => self.d,
@@ -491,7 +493,7 @@ impl GBConsole {
                         };
                     
                         let mut is_hl = false;
-                        let destination = match self.program_counter & 0o070 {
+                        let destination = match opcode & 0o070 {
                             0o000 => &mut self.b,
                             0o010 => &mut self.c,
                             0o020 => &mut self.d,
@@ -517,7 +519,7 @@ impl GBConsole {
                     }
                 
                     0o200 => { //Blok 2
-                        let operand = match self.program_counter & 0o007 {
+                        let operand = match opcode & 0o007 {
                             0o000 => self.b,
                             0o001 => self.c,
                             0o002 => self.d,
@@ -532,7 +534,7 @@ impl GBConsole {
                             _ => panic!("ERROR: Operand octet out of bounds!")
                         };
 
-                        match self.program_counter & 0o070 {
+                        match opcode & 0o070 {
                             0o000 => { //ADD A, r8 | ADD A, [HL]
                                 let temp_a = self.a;
                                 self.a += operand;
@@ -616,6 +618,319 @@ impl GBConsole {
         
 
         self.program_counter += instruction_size;
+        cycle_count
+    }
+
+    fn execute_prefixed_instruction(&mut self) -> u8 {
+        let opcode = self.read(self.program_counter + 1);
+        let mut cycle_count = 8; 
+        
+        let mut is_hl = false;
+        let operand = match opcode & 0o007 {
+            0o000 => &mut self.b,
+            0o001 => &mut self.c,
+            0o002 => &mut self.d,
+            0o003 => &mut self.e,
+            0o004 => &mut self.h,
+            0o005 => &mut self.l,
+            0o006 => {
+                is_hl = true;
+                cycle_count = 16;
+                &mut self.b //<===Throwaway value
+            }
+            0o007 => &mut self.a,
+            _ => panic!("ERROR: Operand octet out of bounds!")
+        };
+
+        match opcode & 0o300 {
+            0o000 => {
+                match opcode & 0o070 {
+                    0o000 => { //RLC r8 | RLC [HL]
+                        let zero_condition ;
+                        let carry_condition;
+
+                        if !is_hl {
+                            zero_condition = *operand == 0;
+                            carry_condition = *operand & 0x80 > 0;
+
+                            *operand <<= 1;
+                            if carry_condition {
+                                *operand += 1;
+                            }
+                        }
+                        else {
+                            let address = u16::from_be_bytes([self.h, self.l]);
+                            let mut value = self.read(address);
+
+                            zero_condition = value == 0;
+                            carry_condition = value & 0x80 > 0;
+
+                            value <<= 1;
+                            if carry_condition {
+                                value += 1;
+                            }
+
+                            self.write(address, value);
+                        }
+
+                        self.flag_toggle(zero_condition, Z_ZERO_FLAG);
+                        self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+                        self.flag_toggle(carry_condition, C_CARRY_FLAG);
+                    }
+                    0o010 => { //RRC r8 | RRC [HL]
+                        let zero_condition ;
+                        let carry_condition;
+
+                        if !is_hl {
+                            zero_condition = *operand == 0;
+                            carry_condition = *operand & 0x01 > 0;
+
+                            *operand >>= 1;
+                            if carry_condition {
+                                *operand += 0x80;
+                            }
+                        }
+                        else {
+                            let address = u16::from_be_bytes([self.h, self.l]);
+                            let mut value = self.read(address);
+
+                            zero_condition = value == 0;
+                            carry_condition = value & 0x01 > 0;
+
+                            value >>= 1;
+                            if carry_condition {
+                                value += 0x80;
+                            }
+
+                            self.write(address, value);
+                        }
+
+                        self.flag_toggle(zero_condition, Z_ZERO_FLAG);
+                        self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+                        self.flag_toggle(carry_condition, C_CARRY_FLAG);
+                    }
+                    0o020 => { //RL r8 | RL [HL]
+                        let zero_condition ;
+                        let carry_condition;
+
+                        if !is_hl {
+                            zero_condition = *operand == 0;
+                            carry_condition = *operand & 0x80 > 0;
+
+                            *operand <<= 1;
+                            if self.flags & C_CARRY_FLAG > 0 {
+                                *operand += 1;
+                            }
+                        }
+                        else {
+                            let address = u16::from_be_bytes([self.h, self.l]);
+                            let mut value = self.read(address);
+
+                            zero_condition = value == 0;
+                            carry_condition = value & 0x80 > 0;
+
+                            value <<= 1;
+                            if self.flags & C_CARRY_FLAG > 0 {
+                                value += 1;
+                            }
+
+                            self.write(address, value);
+                        }
+
+                        self.flag_toggle(zero_condition, Z_ZERO_FLAG);
+                        self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+                        self.flag_toggle(carry_condition, C_CARRY_FLAG);
+                    }
+                    0o030 => { //RR r8 | RR [HL]
+                        let zero_condition ;
+                        let carry_condition;
+    
+                        if !is_hl {
+                            zero_condition = *operand == 0;
+                            carry_condition = *operand & 0x01 > 0;
+    
+                            *operand >>= 1;
+                            if self.flags & C_CARRY_FLAG > 0 {
+                                *operand += 0x80;
+                            }
+                        }
+                        else {
+                            let address = u16::from_be_bytes([self.h, self.l]);
+                            let mut value = self.read(address);
+    
+                            zero_condition = value == 0;
+                            carry_condition = value & 0x01 > 0;
+    
+                            value >>= 1;
+                            if self.flags & C_CARRY_FLAG > 0 {
+                                value += 0x80;
+                            }
+    
+                            self.write(address, value);
+                        }
+    
+                        self.flag_toggle(zero_condition, Z_ZERO_FLAG);
+                        self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+                        self.flag_toggle(carry_condition, C_CARRY_FLAG);
+                    }
+                    0o040 => { //SLA r8 | SLA [HL]
+                        let zero_condition ;
+                        let carry_condition;
+
+                        if !is_hl {
+                            zero_condition = *operand == 0;
+                            carry_condition = *operand & 0x80 > 0;
+
+                            *operand <<= 1;
+                        }
+                        else {
+                            let address = u16::from_be_bytes([self.h, self.l]);
+                            let mut value = self.read(address);
+
+                            zero_condition = value == 0;
+                            carry_condition = value & 0x80 > 0;
+
+                            value <<= 1;
+
+                            self.write(address, value);
+                        }
+
+                        self.flag_toggle(zero_condition, Z_ZERO_FLAG);
+                        self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+                        self.flag_toggle(carry_condition, C_CARRY_FLAG);
+                    }
+                    0o050 => { //SRA r8 | SRA [HL]
+                        let zero_condition ;
+                        let carry_condition;
+    
+                        if !is_hl {
+                            zero_condition = *operand == 0;
+                            carry_condition = *operand & 0x01 > 0;
+    
+                            let kept_bit = *operand & 0x80;
+                            *operand >>= 1;
+                            *operand |= kept_bit;
+                        }
+                        else {
+                            let address = u16::from_be_bytes([self.h, self.l]);
+                            let mut value = self.read(address);
+    
+                            zero_condition = value == 0;
+                            carry_condition = value & 0x01 > 0;
+    
+                            let kept_bit = value & 0x80;
+                            value >>= 1;
+                            value |= kept_bit;
+    
+                            self.write(address, value);
+                        }
+    
+                        self.flag_toggle(zero_condition, Z_ZERO_FLAG);
+                        self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+                        self.flag_toggle(carry_condition, C_CARRY_FLAG);
+                    }
+                    0o060 => { //SWAP r8 | SWAP [HL]
+                        let zero_condition;
+
+                        if !is_hl {
+                            zero_condition = *operand == 0;
+
+                            let upper_nibble = (*operand) << 4;
+                            let lower_nibble = (*operand) >> 4;
+                            *operand = upper_nibble | lower_nibble;
+                        }
+                        else {
+                            let address = u16::from_be_bytes([self.h, self.l]);
+                            let mut value = self.read(address);
+
+                            zero_condition = value == 0;
+
+                            let upper_nibble = value << 4;
+                            let lower_nibble = value >> 4;
+                            value = upper_nibble | lower_nibble;
+
+                            self.write(address, value);
+                        }
+
+                        self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG | C_CARRY_FLAG);
+                        self.flag_toggle(zero_condition, Z_ZERO_FLAG);
+                    }
+                    0o070 => { //SRL r8 | SRL [HL]
+                        let zero_condition ;
+                        let carry_condition;
+    
+                        if !is_hl {
+                            zero_condition = *operand == 0;
+                            carry_condition = *operand & 0x01 > 0;
+    
+                            *operand >>= 1;
+                        }
+                        else {
+                            let address = u16::from_be_bytes([self.h, self.l]);
+                            let mut value = self.read(address);
+    
+                            zero_condition = value == 0;
+                            carry_condition = value & 0x01 > 0;
+    
+                            value >>= 1;
+    
+                            self.write(address, value);
+                        }
+    
+                        self.flag_toggle(zero_condition, Z_ZERO_FLAG);
+                        self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG);
+                        self.flag_toggle(carry_condition, C_CARRY_FLAG);
+                    }
+                    _ => panic!("ERROR: instruction octet out of bounds!")
+                };
+            }
+            0o100 => { //BIT u3, r8 | BIT u3, [HL]
+                let u3 = (opcode & 0o070) >> 3;
+                let tested_bit = 1 << u3;
+
+                if !is_hl{
+                    let condition = *operand & tested_bit == 0;
+                    self.flag_toggle(condition, Z_ZERO_FLAG);
+                }
+                else {
+                    cycle_count = 12;
+                    let address = u16::from_be_bytes([self.h,self.l]);
+                    let value = self.read(address);
+                    self.flag_toggle(value & tested_bit == 0, Z_ZERO_FLAG);
+                }
+
+                self.flag_toggle(false, N_SUBTRACTION_FLAG);
+                self.flag_toggle(true, H_HALF_CARRY_FLAG);
+            }
+            0o200 => { //RES u3, r8 | RES u3, [HL]
+                let u3 = (opcode & 0o070) >> 3;
+                let reset_bit = 1 << u3;
+
+                if !is_hl{
+                    *operand &= 0xFF ^ reset_bit;
+                }
+                else {
+                    let address = u16::from_be_bytes([self.h,self.l]);
+                    let value = self.read(address) & (0xFF ^ reset_bit);
+                    self.write(address, value);
+                }
+            }
+            0o300 => { //SET u3, r8 | SET u3, [HL]
+                let u3 = (opcode & 0o070) >> 3;
+                let set_bit = 1 << u3;
+
+                if !is_hl{
+                    *operand |= set_bit;
+                }
+                else {
+                    let address = u16::from_be_bytes([self.h,self.l]);
+                    let value = self.read(address) | set_bit;
+                    self.write(address, value);
+                }
+            }
+            _ => panic!("ERROR: Block octet out of bounds!")
+        }
+
         cycle_count
     }
 }
