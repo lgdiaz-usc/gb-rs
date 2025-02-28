@@ -266,8 +266,27 @@ impl GBConsole {
 
                 self.flag_toggle(will_carry, C_CARRY_FLAG);
             }
-            0o047 => {
-                //TODO: Implement DAA instruction
+            0o047 => { //DAA
+                if self.flags & N_SUBTRACTION_FLAG > 0 {
+                    if self.flags & H_HALF_CARRY_FLAG > 0 {
+                        self.a += 0x6;
+                    }
+                    if self.flags & C_CARRY_FLAG > 0 {
+                        self.a += 0x60;
+                    }
+                }
+                else {
+                    if (self.flags & C_CARRY_FLAG > 0 || self.a > 0x99) {
+                        self.a += 0x60;
+                        self.flag_toggle(true, C_CARRY_FLAG);
+                    }
+                    if (self.flags & H_HALF_CARRY_FLAG > 1) || (self.a & 0xF > 0x9) {
+                        self.a += 0x6;
+                    }
+                }
+
+                self.flag_toggle(false, H_HALF_CARRY_FLAG);
+                self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
             }
             0o057 => { //CPL
                 self.a = self.a ^ 0xFF;
@@ -298,6 +317,31 @@ impl GBConsole {
                 match block {
                     0o000 => { //Block 0
                         match opcode & 0o007 {
+                            0o000 => { //JR e8, JR cc, e8
+                                let jump_condition = match opcode & 0o070 {
+                                    0o030 => true,
+                                    0o040 => self.flags & Z_ZERO_FLAG == 0,
+                                    0o050 => self.flags & Z_ZERO_FLAG > 0,
+                                    0o060 => self.flags & C_CARRY_FLAG == 0,
+                                    0o070 => self.flags & C_CARRY_FLAG > 0,
+                                    _ => panic!("ERROR: Condition opcode out of bounds!")
+                                };
+
+                                if jump_condition {
+                                    cycle_count = 12;
+                                    let jump_offset_u8 = self.read(self.program_counter + 1);
+                                    if jump_offset_u8 >= 0x80 {
+                                        instruction_size = u16::from_be_bytes([0xFF, jump_offset_u8]);
+                                    }
+                                    else {
+                                        instruction_size = u16::from_be_bytes([0, jump_offset_u8]);
+                                    }
+                                }
+                                else {
+                                    instruction_size = 2;
+                                    cycle_count = 8;
+                                }
+                            }
                             0o001 => { //LD r16, n16 | LD SP, n16 | ADD HL, r16 | ADD HL, SP
                                 let is_add = opcode & 0o010 > 0;
                                 let mut is_sp = false;
