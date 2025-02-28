@@ -276,7 +276,7 @@ impl GBConsole {
                     }
                 }
                 else {
-                    if (self.flags & C_CARRY_FLAG > 0 || self.a > 0x99) {
+                    if (self.flags & C_CARRY_FLAG > 0) || (self.a > 0x99) {
                         self.a += 0x60;
                         self.flag_toggle(true, C_CARRY_FLAG);
                     }
@@ -653,7 +653,106 @@ impl GBConsole {
                     }
                 
                     0o300 => { //Block 3
-                    
+                        match opcode & 0o007 {
+                            0o006 => {
+                                instruction_size = 2;
+                                let operand = self.read(self.program_counter + 1);
+                                
+                                match opcode & 0o070 {
+                                    0o000 => { //ADD A, n8
+                                        let temp_a = self.a;
+                                        self.a += operand;
+                                    
+                                        self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                        self.flag_toggle(false, N_SUBTRACTION_FLAG);
+                                        self.flag_toggle((temp_a & 0x0F) > (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                        self.flag_toggle(temp_a > self.a, C_CARRY_FLAG);
+                                    }
+                                    0o010 => { //ADC A, n8
+                                        let temp_a = self.a;
+                                        self.a += operand;
+                                        if self.flags & C_CARRY_FLAG > 0 {
+                                            self.a += 1;
+                                        }
+                                    
+                                        self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                        self.flag_toggle(false, N_SUBTRACTION_FLAG);
+                                        self.flag_toggle((temp_a & 0x0F) > (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                        self.flag_toggle(temp_a > self.a, C_CARRY_FLAG);
+                                    }
+                                    0o020 => { //SUB A, n8
+                                        let temp_a = self.a;
+                                        self.a -= operand;
+                                    
+                                        self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                        self.flag_toggle(true, N_SUBTRACTION_FLAG);
+                                        self.flag_toggle((temp_a & 0x0F) < (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                        self.flag_toggle(temp_a < self.a, C_CARRY_FLAG);
+                                    }
+                                    0o030 => { //SBC A, n8
+                                        let temp_a = self.a;
+                                        self.a -= operand;
+                                        if self.flags & C_CARRY_FLAG > 0 {
+                                            self.a -= 1;
+                                        }
+                                    
+                                        self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                        self.flag_toggle(true, N_SUBTRACTION_FLAG);
+                                        self.flag_toggle((temp_a & 0x0F) < (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                        self.flag_toggle(temp_a < self.a, C_CARRY_FLAG);
+                                    }
+                                    0o040 => { //AND A, n8
+                                        self.a &= operand;
+                                    
+                                        self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                        self.flag_toggle(true, H_HALF_CARRY_FLAG);
+                                        self.flag_toggle(false, N_SUBTRACTION_FLAG | C_CARRY_FLAG);
+                                    }
+                                    0o050 => { //XOR A, n8
+                                        self.a ^= operand;
+                                    
+                                        self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                        self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG | C_CARRY_FLAG);
+                                    }
+                                    0o060 => { //OR A, n8
+                                        self.a |= operand;
+                                    
+                                        self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
+                                        self.flag_toggle(false, N_SUBTRACTION_FLAG | H_HALF_CARRY_FLAG | C_CARRY_FLAG);
+                                    }
+                                    0o070 => { //CP A, n8
+                                        let comparison = self.a - operand;
+                                    
+                                        self.flag_toggle(comparison == 0, Z_ZERO_FLAG);
+                                        self.flag_toggle(true, N_SUBTRACTION_FLAG);
+                                        self.flag_toggle((self.a & 0x0F) < (comparison & 0x0F), H_HALF_CARRY_FLAG);
+                                        self.flag_toggle(self.a < comparison, C_CARRY_FLAG);
+                                    }
+                                    _ => panic!("ERROR: Operator octet out of bounds!")
+                                }
+                            }
+                            0o007 => { //RST vec
+                                let jump_address_vector = match opcode & 070 {
+                                    0o000 => 0x00,
+                                    0o010 => 0x08,
+                                    0o020 => 0x10,
+                                    0o030 => 0x18,
+                                    0o040 => 0x20,
+                                    0o050 => 0x28,
+                                    0o060 => 0x30,
+                                    0o070 => 0x38,
+                                    _ => panic!("ERROR: Vector octet out of bounds!")
+                                };
+                                
+                                let return_address = self.read_16(self.program_counter + 1);
+                                self.stack_pointer -= 2;
+                                self.write_16(self.stack_pointer, return_address);
+
+                                instruction_size = 0;
+                                self.program_counter = self.read_16(jump_address_vector);
+                            }
+                            _ => panic!("ERROR: Column octet out of bounds!")
+                        }
                     }
                     _ => panic!("ERROR: Block octet out of bounds!")
                 }
