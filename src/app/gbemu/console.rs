@@ -654,6 +654,35 @@ impl GBConsole {
                 
                     0o300 => { //Block 3
                         match opcode & 0o007 {
+                            0o001 => { //POP r16 | POP AF
+                                cycle_count = 12;
+
+                                let popped_value = self.read_16(self.stack_pointer);
+                                self.stack_pointer += 2;
+
+                                let (register_high, register_low) = match opcode & 0o060 {
+                                    0o000 => (&mut self.b, &mut self.c),
+                                    0o020 => (&mut self.d, &mut self.e),
+                                    0o040 => (&mut self.h, &mut self.l),
+                                    0o060 => (&mut self.a, &mut self.flags),
+                                    _ => panic!("ERROR: register octet out of bounds!")
+                                };
+
+                                (*register_high, *register_low) = u16::to_be_bytes(popped_value).into();
+                            }
+                            0o005 => { //PUSH r16 | PUSH AF
+                                cycle_count = 16;
+                                let pushed_value = u16::from_be_bytes(match opcode & 0o060 {
+                                    0o000 => [self.b, self.c],
+                                    0o020 => [self.d, self.e],
+                                    0o040 => [self.h, self.l],
+                                    0o060 => [self.a, self.flags],
+                                    _ => panic!("ERROR: register octet out of bounds!")
+                                });
+
+                                self.stack_pointer -= 2;
+                                self.write_16(self.stack_pointer, pushed_value);
+                            }
                             0o006 => {
                                 instruction_size = 2;
                                 let operand = self.read(self.program_counter + 1);
