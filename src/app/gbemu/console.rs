@@ -323,14 +323,23 @@ impl GBConsole {
             //Block 3 one-offs
             0o311 => { //RET
                 cycle_count = 16;
+                instruction_size = 0;
                 self.program_counter = self.read_16(self.stack_pointer);
                 self.stack_pointer += 2;
             }
             0o313 => { //PREFIX
                 cycle_count = self.execute_prefixed_instruction();
             }
+            0o315 => { //CALL
+                cycle_count = 6;
+                instruction_size = 0;
+                self.stack_pointer -= 2;
+                self.write_16(self.stack_pointer, self.program_counter + 3);
+                self.program_counter = self.read_16(self.program_counter + 1);
+            }
             0o331 => { //RETI
                 cycle_count = 16;
+                instruction_size = 0;
                 self.program_counter = self.read_16(self.stack_pointer);
                 self.stack_pointer += 2;
                 self.interrupt_master_enable_flag = IMEState::Enabled;
@@ -699,6 +708,7 @@ impl GBConsole {
 
                                 if return_condition {
                                     cycle_count = 20;
+                                    instruction_size = 0;
                                     self.program_counter = self.read_16(self.stack_pointer);
                                     self.stack_pointer += 2;
                                 }
@@ -721,6 +731,26 @@ impl GBConsole {
                                 };
 
                                 (*register_high, *register_low) = u16::to_be_bytes(popped_value).into();
+                            }
+                            0o004 => { //CALL cc
+                                let jump_condition = match opcode & 0o030 {
+                                    0o000 => self.flags & Z_ZERO_FLAG == 0,
+                                    0o010 => self.flags & Z_ZERO_FLAG > 0,
+                                    0o020 => self.flags & C_CARRY_FLAG == 0,
+                                    0o030 => self.flags & C_CARRY_FLAG > 0,
+                                    _ => panic!("ERROR: condition octet out of bounds!")
+                                };
+                                if jump_condition {
+                                    instruction_size = 0;
+                                    cycle_count = 24;
+                                    self.stack_pointer -= 2;
+                                    self.write_16(self.stack_pointer, self.program_counter + 3);
+                                    self.program_counter = self.read_16(self.program_counter + 1);
+                                }
+                                else {
+                                    cycle_count = 12;
+                                    instruction_size = 3;
+                                }
                             }
                             0o005 => { //PUSH r16 | PUSH AF
                                 cycle_count = 16;
