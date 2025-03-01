@@ -349,12 +349,71 @@ impl GBConsole {
                 self.stack_pointer += 2;
                 self.interrupt_master_enable_flag = IMEState::Enabled;
             }
+            0o340 => { //LDH [a8], A
+                cycle_count = 12;
+                instruction_size = 2;
+                let address = u16::from_be_bytes([0xFF, self.read(self.program_counter + 1)]);
+                
+                self.write(address, self.a);
+            }
+            0o350 => { //ADD SP, e8
+                instruction_size = 2;
+                cycle_count = 16;
+
+                let offset_lsb = self.read(self.program_counter + 1);
+                let offset;
+                if offset_lsb & 0x80 == 0 {
+                    offset = u16::from_be_bytes([0x00, offset_lsb]);
+                }
+                else {
+                    offset = u16::from_be_bytes([0xFF, offset_lsb]);
+                }
+
+                self.stack_pointer += offset;
+
+                let carry_check = self.stack_pointer.to_be_bytes()[1];
+                self.flag_toggle((carry_check & 0xF0) < (offset_lsb & 0xFF), H_HALF_CARRY_FLAG);
+                self.flag_toggle(carry_check < offset_lsb, C_CARRY_FLAG);
+                self.flag_toggle(false, Z_ZERO_FLAG | N_SUBTRACTION_FLAG);
+            }
             0o351 => { //JP HL
                 instruction_size = 0;
                 self.program_counter = u16::from_be_bytes([self.h, self.l]);
             }
+            0o260 => { //LDH A, [a8]
+                instruction_size = 2;
+                cycle_count = 12;
+                let address = u16::from_be_bytes([0xFF, self.read(self.program_counter + 1)]);
+
+                self.a = self.read(address);
+            }
             0o363 => { //DI
                 self.interrupt_master_enable_flag = IMEState::Disabled;
+            }
+            0o370 => { //LD HL, SP + e8
+                instruction_size = 2;
+                cycle_count = 12;
+
+                let offset_lsb = self.read(self.program_counter + 1);
+                let offset;
+                if offset_lsb & 0x80 == 0 {
+                    offset = u16::from_be_bytes([0x00, offset_lsb]);
+                }
+                else {
+                    offset = u16::from_be_bytes([0xFF, offset_lsb]);
+                }
+
+                let new_pointer = self.stack_pointer + offset;
+                (self.h, self.l) = new_pointer.to_be_bytes().into();
+
+                let carry_check = new_pointer.to_be_bytes()[1];
+                self.flag_toggle((carry_check & 0xF0) < (offset_lsb & 0xFF), H_HALF_CARRY_FLAG);
+                self.flag_toggle(carry_check < offset_lsb, C_CARRY_FLAG);
+                self.flag_toggle(false, Z_ZERO_FLAG | N_SUBTRACTION_FLAG);
+            }
+            0o371 => { //LD SP, HL
+                cycle_count = 8;
+                self.stack_pointer = u16::from_be_bytes([self.h,self.l]);
             }
             0o373 => { //EI
                 self.interrupt_master_enable_flag = IMEState::Pending;
@@ -740,6 +799,25 @@ impl GBConsole {
                                 };
 
                                 (*register_high, *register_low) = u16::to_be_bytes(popped_value).into();
+                            }
+                            0o002 if opcode & 0o070 >= 0o040 => { //LDH [C], A | LD [a16], A | LDH A, [C] | LD A, [a16]
+                                let address;
+                                if opcode & 0o010 == 0 {
+                                    cycle_count = 8;
+                                    address = u16::from_be_bytes([0xFF, self.c]);
+                                }
+                                else {
+                                    cycle_count = 16;
+                                    instruction_size = 3;
+                                    address = self.read_16(self.program_counter + 1);
+                                }
+
+                                if opcode & 0o020 == 0 {
+                                    self.write(address, self.a);
+                                }
+                                else {
+                                    self.a = self.read(address);
+                                }
                             }
                             0o002 => { //JP cc
                                 let jump_condition = match opcode & 0o030 {
