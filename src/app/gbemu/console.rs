@@ -1,7 +1,5 @@
 use std::{fs::File, io::Bytes};
 
-use serde::de::value;
-
 use crate::{app::cartridge_info::CartridgeInfo, mappers::{Mapper, NoMBC, MBC1}};
 
 pub struct GBConsole {
@@ -307,9 +305,17 @@ impl GBConsole {
             }
 
             //Block 3 one-offs
+            0o311 => { //RET
+                cycle_count = 16;
+                self.program_counter = self.read_16(self.stack_pointer);
+                self.stack_pointer += 2;
+            }
             0o313 => {
                 cycle_count = self.execute_prefixed_instruction();
             }
+
+            //Invalid opcodes
+            0o323 | 0o333 | 0o335 | 0o343 | 0o344 | 0o353 | 0o354 | 0o355 | 0o364 | 0o374 | 0o375 => panic!("ERROR: Invalid opcode!"),
 
             //The rest of the instructions are interpreted through pattern-matching. The above are instructions which break those patterns.
             _ => {
@@ -654,6 +660,24 @@ impl GBConsole {
                 
                     0o300 => { //Block 3
                         match opcode & 0o007 {
+                            0o000 => { //RET cc
+                                let return_condition = match opcode & 0o030 {
+                                    0o000 => self.flags & Z_ZERO_FLAG == 0,
+                                    0o010 => self.flags & Z_ZERO_FLAG > 0,
+                                    0o020 => self.flags & C_CARRY_FLAG == 0,
+                                    0o030 => self.flags & C_CARRY_FLAG > 0,
+                                    _ => panic!("ERROR: condition octet out of bounds!")
+                                };
+
+                                if return_condition {
+                                    cycle_count = 20;
+                                    self.program_counter = self.read_16(self.stack_pointer);
+                                    self.stack_pointer += 2;
+                                }
+                                else {
+                                    cycle_count = 8;
+                                }
+                            }
                             0o001 => { //POP r16 | POP AF
                                 cycle_count = 12;
 
