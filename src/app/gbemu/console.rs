@@ -25,6 +25,11 @@ pub struct GBConsole {
     aux_working_ram: Vec<[u8; 0x4000]>,
     aux_working_ram_index: usize,
     high_ram: [u8; 0x39],
+
+    //Interrupt regissters
+    interrupt_master_enable_flag: IMEState,
+    interrupte_enable: u8,
+    interrupt_flag: u8,
 }
 
 const Z_ZERO_FLAG: u8 = 128;
@@ -72,6 +77,9 @@ impl GBConsole {
             aux_working_ram: aux_working_ram,
             aux_working_ram_index: 0,
             high_ram: [0; 0x39],
+            interrupt_master_enable_flag: IMEState::Disabled,
+            interrupte_enable: 0x00,
+            interrupt_flag: 0xE1,
         }
     }
 
@@ -114,7 +122,10 @@ impl GBConsole {
         //I/O Registers
         else if address < 0xFF80 {
             //TODO: Implement I/O Registers
-            0
+            match address {
+                0xFF0F => self.interrupt_flag, //IF
+                _ => panic!("ERROR: Unkown register at address ${:x}", address)
+            }
         }
         //HRAM
         else if address < 0xFFFF {
@@ -122,8 +133,7 @@ impl GBConsole {
         }
         //Interrupt Enable Register
         else {
-            //TODO: Implement Interrupt Enable register
-            0
+            self.interrupte_enable
         }
     }
 
@@ -176,6 +186,12 @@ impl GBConsole {
         //I/O Registers
         else if address < 0xFF80 {
             //TODO: Implement I/O Registers
+            let register = match address {
+                0xFF0f => &mut self.interrupt_flag,
+                _ => panic!("ERROR: Unknown register at address ${:x}", address)
+            };
+
+            *register = value;
         }
         //HRAM
         else if address < 0xFFFF {
@@ -183,7 +199,7 @@ impl GBConsole {
         }
         //Interrupt Enable Register
         else {
-            //TODO: Implement Interrupt Enable register
+            self.interrupte_enable = value;
         }
     }
 
@@ -310,8 +326,20 @@ impl GBConsole {
                 self.program_counter = self.read_16(self.stack_pointer);
                 self.stack_pointer += 2;
             }
-            0o313 => {
+            0o313 => { //PREFIX
                 cycle_count = self.execute_prefixed_instruction();
+            }
+            0o331 => { //RETI
+                cycle_count = 16;
+                self.program_counter = self.read_16(self.stack_pointer);
+                self.stack_pointer += 2;
+                self.interrupt_master_enable_flag = IMEState::Enabled;
+            }
+            0o363 => { //DI
+                self.interrupt_master_enable_flag = IMEState::Disabled;
+            }
+            0o373 => { //EI
+                self.interrupt_master_enable_flag = IMEState::Pending;
             }
 
             //Invalid opcodes
@@ -1129,4 +1157,10 @@ impl GBConsole {
 
         cycle_count
     }
+}
+
+enum IMEState {
+    Enabled,
+    Disabled,
+    Pending
 }
