@@ -321,6 +321,11 @@ impl GBConsole {
             }
 
             //Block 3 one-offs
+            0o303 => { //JP
+                instruction_size = 0;
+                cycle_count = 16;
+                self.program_counter = self.read_16(self.program_counter + 1);
+            }
             0o311 => { //RET
                 cycle_count = 16;
                 instruction_size = 0;
@@ -343,6 +348,10 @@ impl GBConsole {
                 self.program_counter = self.read_16(self.stack_pointer);
                 self.stack_pointer += 2;
                 self.interrupt_master_enable_flag = IMEState::Enabled;
+            }
+            0o351 => { //JP HL
+                instruction_size = 0;
+                self.program_counter = u16::from_be_bytes([self.h, self.l]);
             }
             0o363 => { //DI
                 self.interrupt_master_enable_flag = IMEState::Disabled;
@@ -731,6 +740,24 @@ impl GBConsole {
                                 };
 
                                 (*register_high, *register_low) = u16::to_be_bytes(popped_value).into();
+                            }
+                            0o002 => { //JP cc
+                                let jump_condition = match opcode & 0o030 {
+                                    0o000 => self.flags & Z_ZERO_FLAG == 0,
+                                    0o010 => self.flags & Z_ZERO_FLAG > 0,
+                                    0o020 => self.flags & C_CARRY_FLAG == 0,
+                                    0o030 => self.flags & C_CARRY_FLAG > 0,
+                                    _ => panic!("ERROR: condition octet out of bounds!")
+                                };
+                                if jump_condition {
+                                    instruction_size = 0;
+                                    cycle_count = 16;
+                                    self.program_counter = self.read_16(self.program_counter + 1);
+                                }
+                                else {
+                                    cycle_count = 12;
+                                    instruction_size = 3;
+                                }
                             }
                             0o004 => { //CALL cc
                                 let jump_condition = match opcode & 0o030 {
