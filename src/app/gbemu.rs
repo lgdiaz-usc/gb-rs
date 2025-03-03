@@ -47,7 +47,7 @@ impl GBEmu {
         r
     }
 
-    fn processor(&self, frame: egui::Context) {
+    fn processor(&self, _frame: egui::Context) {
         //Gets a local copyof the rom file path so we don't need to request access to it every time we read
         let current_file_path: String;
         {
@@ -81,8 +81,16 @@ impl GBEmu {
         }
 
         drop(rom_file);
-        let mut rom_file = File::open(current_file_path.clone()).expect("ERROR: File not found!").bytes();
-        let console = GBConsole::new(info, rom_file);
+        let rom_file = File::open(current_file_path.clone()).expect("ERROR: File not found!").bytes();
+        let mut console = GBConsole::new(info, rom_file);
+
+        '_Frame: loop {
+            for _scanline in 0..154 {
+                for _dot in 0..456 {
+                    console.execute_instruction();
+                }
+            }
+        }
     }
 }
 

@@ -222,7 +222,7 @@ impl GBConsole {
         }
     }
 
-    fn execute_instruction(&mut self) -> u8 {
+    pub fn execute_instruction(&mut self) -> u8 {
         let mut instruction_size = 1;
         let mut cycle_count = 4;
 
