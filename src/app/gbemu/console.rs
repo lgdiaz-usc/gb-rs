@@ -122,6 +122,7 @@ impl GBConsole {
             //TODO: Implement I/O Registers
             match address {
                 0xFF0F => self.interrupt_flag, //IF
+                0xFF40 => self.ppu.read(address), //PPU Registers
                 _ => panic!("ERROR: Unkown register at address ${:x}", address)
             }
         }
@@ -185,7 +186,11 @@ impl GBConsole {
         else if address < 0xFF80 {
             //TODO: Implement I/O Registers
             let register = match address {
-                0xFF0f => &mut self.interrupt_flag,
+                0xFF0f => &mut self.interrupt_flag, //IF
+                0xFF40 => { //PPU Registers
+                    self.ppu.write(address, value);
+                    return;
+                }
                 _ => panic!("ERROR: Unknown register at address ${:x}", address)
             };
 
