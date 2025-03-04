@@ -2,6 +2,8 @@ use std::{fs::File, io::Bytes};
 
 use crate::{app::cartridge_info::CartridgeInfo, mappers::{Mapper, NoMBC, MBC1}};
 
+use super::ppu::{self, PPU};
+
 pub struct GBConsole {
     //CPU Registers
     a: u8,
@@ -19,17 +21,18 @@ pub struct GBConsole {
     cartridge: Mapper,
 
     //Console RAM
-    video_ram: Vec<[u8; 0x4000]>,
-    video_ram_index: usize,
     working_ram: [u8; 0x2000],
     aux_working_ram: Vec<[u8; 0x4000]>,
     aux_working_ram_index: usize,
     high_ram: [u8; 0x39],
 
     //Interrupt regissters
-    interrupt_master_enable_flag: IMEState,
-    interrupte_enable: u8,
+    pub interrupt_master_enable_flag: IMEState,
+    interrupt_enable: u8,
     interrupt_flag: u8,
+
+    //External objects
+    ppu: PPU
 }
 
 const Z_ZERO_FLAG: u8 = 128;
@@ -56,9 +59,6 @@ impl GBConsole {
         let mut aux_working_ram = Vec::new();
         aux_working_ram.push([0; 0x4000]);
 
-        let mut video_ram = Vec::new();
-        video_ram.push([0; 0x4000]);
-
         Self {
             a: 0x01,
             b: 0x00,
@@ -71,15 +71,14 @@ impl GBConsole {
             stack_pointer: 0xFFFE,
             program_counter: 0x0100,
             cartridge: cartridge,
-            video_ram: video_ram,
-            video_ram_index: 0,
             working_ram: [0; 0x2000],
             aux_working_ram: aux_working_ram,
             aux_working_ram_index: 0,
             high_ram: [0; 0x39],
             interrupt_master_enable_flag: IMEState::Disabled,
-            interrupte_enable: 0x00,
+            interrupt_enable: 0x00,
             interrupt_flag: 0xE1,
+            ppu: ppu::PPU::new(),
         }
     }
 
@@ -90,7 +89,7 @@ impl GBConsole {
         }
         //VRAM
         else if address < 0xA000 {
-            self.video_ram[self.video_ram_index][(address - 0x8000) as usize]
+            self.ppu.read(address)
         }
         //Cartrige RAM
         else if address < 0xC000 {
@@ -111,8 +110,7 @@ impl GBConsole {
         }
         //Object Attribute Memory
         else if address < 0xFEA0 {
-            //TODO: Implement Object Attribute Memory
-            0
+            self.ppu.read(address)
         }
         //Not Usable (Use is prohibited by Nintendo)
         else if address < 0xFF00 {
@@ -133,7 +131,7 @@ impl GBConsole {
         }
         //Interrupt Enable Register
         else {
-            self.interrupte_enable
+            self.interrupt_enable
         }
     }
 
@@ -155,7 +153,7 @@ impl GBConsole {
         }
         //VRAM
         else if address < 0xA000 {
-            self.video_ram[self.video_ram_index][(address - 0x8000) as usize] = value;
+            self.ppu.write(address, value);
         }
         //Cartrige RAM
         else if address < 0xC000 {
@@ -176,7 +174,7 @@ impl GBConsole {
         }
         //Object Attribute Memory
         else if address < 0xFEA0 {
-            //TODO: Implement Object Access Memory
+            self.ppu.write(address, value);
         }
         //Not Usable (Use is prohibited by Nintendo)
         else if address < 0xFF00 {
@@ -199,7 +197,7 @@ impl GBConsole {
         }
         //Interrupt Enable Register
         else {
-            self.interrupte_enable = value;
+            self.interrupt_enable = value;
         }
     }
 
@@ -220,6 +218,38 @@ impl GBConsole {
         else {
             self.flags &= 0xFF ^ flag;
         }
+    }
+
+    pub fn handle_interrupt(&mut self) -> u8 {
+        if self.interrupt_master_enable_flag == IMEState::Enabled {
+            let mut bit_to_check = 0b1;
+
+            for _ in 0..5 {
+                if (self.interrupt_enable & bit_to_check > 0) && (self.interrupt_flag & bit_to_check > 0) {
+                    break;
+                }
+                else {
+                    bit_to_check <<= 1;
+                }
+            }
+
+            let interrupt_vector = match bit_to_check {
+                0b1 => 0x40,
+                0b10 => 0x48,
+                0b100 => 0x50,
+                0b1000 => 0x58,
+                0b10000 => 0x60,
+                _ => return 0
+            };
+
+            self.stack_pointer -= 2;
+            self.write_16(self.stack_pointer, self.program_counter);
+            self.program_counter = self.read_16(interrupt_vector);
+            self.interrupt_master_enable_flag = IMEState::Disabled;
+            return 20;
+        }
+
+        0
     }
 
     pub fn execute_instruction(&mut self) -> u8 {
@@ -1294,7 +1324,8 @@ impl GBConsole {
     }
 }
 
-enum IMEState {
+#[derive(PartialEq)]
+pub enum IMEState {
     Enabled,
     Disabled,
     Pending

@@ -5,6 +5,7 @@ use console::GBConsole;
 use super::cartridge_info::CartridgeInfo;
 
 mod console;
+mod ppu;
 
 #[derive(Clone)]
 pub struct GBEmu {
@@ -84,10 +85,21 @@ impl GBEmu {
         let rom_file = File::open(current_file_path.clone()).expect("ERROR: File not found!").bytes();
         let mut console = GBConsole::new(info, rom_file);
 
+        let mut cpu_delay = 0;
         '_Frame: loop {
             for _scanline in 0..154 {
                 for _dot in 0..456 {
-                    console.execute_instruction();
+                    cpu_delay += console.handle_interrupt();
+
+                    if cpu_delay == 0 {
+                        let interrupt_to_be_enabled = console.interrupt_master_enable_flag == console::IMEState::Pending;
+                        cpu_delay = console.execute_instruction();
+                        if interrupt_to_be_enabled && console.interrupt_master_enable_flag == console::IMEState::Pending {
+                            console.interrupt_master_enable_flag = console::IMEState::Enabled
+                        }
+                    }
+
+                    cpu_delay -= 1;
                 }
             }
         }
