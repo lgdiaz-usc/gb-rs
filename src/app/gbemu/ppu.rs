@@ -14,6 +14,16 @@ pub struct PPU {
     lcdc_2_obj_is_tall: bool, //0: 8x8, 1: 8x16
     lcdc_1_obj_enable: bool,
     lcdc_0_bg_window_enable: bool,
+
+    //STAT register values
+    ppu_mode: PPUState,
+    stat: u8,
+
+    //Standalone registers
+    ly: u8,
+    ly_compare: u8,
+    scy: u8,
+    scx: u8,
 }
 
 impl PPU {
@@ -33,6 +43,12 @@ impl PPU {
             lcdc_2_obj_is_tall: false,
             lcdc_1_obj_enable: false,
             lcdc_0_bg_window_enable: true,
+            ppu_mode: PPUState::Mode1,
+            stat: 0x85,
+            ly: 0,
+            ly_compare: 0,
+            scy: 0x00,
+            scx: 0x00,
         }
     }
 
@@ -75,6 +91,24 @@ impl PPU {
 
                     lcdc
                 }
+                0xFF41 => { //STAT
+                    let mut stat = self.stat & 0b01111000;
+                    if self.ly == self.ly_compare {
+                        stat |= 0b100;
+                    }
+                    stat |= match self.ppu_mode {
+                        PPUState::Mode0 => 0b00,
+                        PPUState::Mode1 => 0b01,
+                        PPUState::Mode2 => 0b10,
+                        PPUState::Mode3 => 0b11
+                    };
+
+                    stat
+                }
+                0xFF42 => self.scy,
+                0xFF43 => self.scx,
+                0xFF44 => self.ly,
+                0xFF45 => self.ly_compare, //LYC
                 _ => panic!("ERROR: Unknown register at address ${:x}", address)
             }
         }
@@ -92,7 +126,7 @@ impl PPU {
         }
         else if address >= 0xFF00 && address <= 0xFF7F {
             //TODO: Implement PPU registers
-            match address {
+            let register = match address {
                 0xFF40 => { //LCDC
                     self.lcdc_7_lcd_enabled = value & 128 > 0;
                     self.lcdc_6_window_tile_map_area = if value & 64 > 0 {0x9C00 - 0x8000} else {0x9800 - 0x8000};
@@ -102,12 +136,27 @@ impl PPU {
                     self.lcdc_2_obj_is_tall = value & 4 > 0;
                     self.lcdc_1_obj_enable = value & 2 > 0;
                     self.lcdc_0_bg_window_enable = value & 1 > 0;
+                    return;
                 }
+                0xFF41 => &mut self.stat, //STAT
+                0xFF42 => &mut self.scy,
+                0xFF43 => &mut self.scx,
+                0xFF44 => return, //LY is read only!
+                0xFF45 => &mut self.ly_compare, //LYC
                 _ => panic!("ERROR: Unkown register at address ${:x}", address)
-            }
+            };
+
+            *register = value;
         }
         else {
             panic!("ERROR: Address out of bounds!")
         }
     }
+}
+
+enum PPUState {
+    Mode0,
+    Mode1,
+    Mode2,
+    Mode3,
 }
