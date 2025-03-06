@@ -16,7 +16,7 @@ pub struct PPU {
     lcdc_0_bg_window_enable: bool,
 
     //STAT register values
-    ppu_mode: PPUState,
+    ppu_mode:u8,
     stat: u8,
 
     //Standalone registers
@@ -24,7 +24,17 @@ pub struct PPU {
     ly_compare: u8,
     scy: u8,
     scx: u8,
+
+    //Misc. variables
+    dot_counter: u16, //The current dot on the current scanline;
+    mode_3_end_index: u16,
 }
+
+//PPU mode values 
+const PPU_MODE_0_HBLANK: u8      = 0;
+const PPU_MODE_1_VBLANK: u8      = 1;
+const PPU_MODE_2_OAM_SCAN:  u8   = 2;
+const PPU_MODE_3_DRAW_PIXELS: u8 = 3;
 
 impl PPU {
     pub fn new() -> Self {
@@ -43,12 +53,14 @@ impl PPU {
             lcdc_2_obj_is_tall: false,
             lcdc_1_obj_enable: false,
             lcdc_0_bg_window_enable: true,
-            ppu_mode: PPUState::Mode1,
+            ppu_mode: PPU_MODE_1_VBLANK,
             stat: 0x85,
             ly: 0,
             ly_compare: 0,
             scy: 0x00,
             scx: 0x00,
+            dot_counter: 0,
+            mode_3_end_index: 172 + 80,
         }
     }
 
@@ -96,12 +108,7 @@ impl PPU {
                     if self.ly == self.ly_compare {
                         stat |= 0b100;
                     }
-                    stat |= match self.ppu_mode {
-                        PPUState::Mode0 => 0b00,
-                        PPUState::Mode1 => 0b01,
-                        PPUState::Mode2 => 0b10,
-                        PPUState::Mode3 => 0b11
-                    };
+                    stat |= self.ppu_mode;
 
                     stat
                 }
@@ -119,10 +126,14 @@ impl PPU {
 
     pub fn write(&mut self, address: u16, value: u8) {
         if address >= 0x8000 && address <= 0x9fff {
-            self.video_ram[self.video_ram_index][(address - 0x8000) as usize] = value;
+            if self.ppu_mode != PPU_MODE_3_DRAW_PIXELS {
+                self.video_ram[self.video_ram_index][(address - 0x8000) as usize] = value;
+            }
         }
         else if address >= 0xFE00 && address <= 0xFE9F {
-            self.object_attribute_memory[(address - 0xFE00) as usize] = value;
+            if self.ppu_mode != PPU_MODE_2_OAM_SCAN && self.ppu_mode != PPU_MODE_3_DRAW_PIXELS {
+                self.object_attribute_memory[(address - 0xFE00) as usize] = value;
+            }
         }
         else if address >= 0xFF00 && address <= 0xFF7F {
             //TODO: Implement PPU registers
@@ -152,11 +163,51 @@ impl PPU {
             panic!("ERROR: Address out of bounds!")
         }
     }
-}
 
-enum PPUState {
-    Mode0,
-    Mode1,
-    Mode2,
-    Mode3,
+    pub fn update(&mut self) {
+        match self.ppu_mode {
+            PPU_MODE_0_HBLANK => {
+                if self.dot_counter & 1 == 0 {
+                    let obj_address = self.dot_counter << 1;
+
+                }
+            }
+            PPU_MODE_1_VBLANK => {
+
+            }
+            PPU_MODE_2_OAM_SCAN => {
+
+            }
+            PPU_MODE_3_DRAW_PIXELS => {
+
+            }
+            _ => panic!("ERROR: Invalid PPU Mode \"{}\"", self.ppu_mode)
+        }
+
+        self.dot_counter += 1;
+        if self.ppu_mode == PPU_MODE_2_OAM_SCAN && self.dot_counter == 80 {
+            self.ppu_mode = PPU_MODE_3_DRAW_PIXELS;
+        }
+        else if self.ppu_mode == PPU_MODE_3_DRAW_PIXELS && self.dot_counter == self.mode_3_end_index {
+            self.ppu_mode = PPU_MODE_0_HBLANK;
+            self.mode_3_end_index = 172 + 80;
+        }
+        else if self.dot_counter == 456 {
+            self.dot_counter = 0;
+            if self.ly >= 153 {
+                self.ly = 0;
+                self.ppu_mode = PPU_MODE_2_OAM_SCAN;
+            }
+            else {
+                self.ly += 1; 
+
+                if self.ppu_mode == PPU_MODE_0_HBLANK && self.ly < 144 {
+                    self.ppu_mode = PPU_MODE_2_OAM_SCAN;
+                }
+                else {
+                    self.ppu_mode = PPU_MODE_1_VBLANK;
+                }
+            }
+        }
+    }
 }
