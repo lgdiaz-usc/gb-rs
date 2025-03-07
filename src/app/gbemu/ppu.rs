@@ -25,6 +25,9 @@ pub struct PPU {
     scy: u8,
     scx: u8,
 
+    //Buffers for the rendering process
+    obj_buffer: Vec<u16>,
+
     //Misc. variables
     dot_counter: u16, //The current dot on the current scanline;
     mode_3_end_index: u16,
@@ -59,6 +62,7 @@ impl PPU {
             ly_compare: 0,
             scy: 0x00,
             scx: 0x00,
+            obj_buffer: Vec::with_capacity(10),
             dot_counter: 0,
             mode_3_end_index: 172 + 80,
         }
@@ -167,16 +171,24 @@ impl PPU {
     pub fn update(&mut self) {
         match self.ppu_mode {
             PPU_MODE_0_HBLANK => {
-                if self.dot_counter & 1 == 0 {
-                    let obj_address = self.dot_counter << 1;
-
-                }
+                
             }
             PPU_MODE_1_VBLANK => {
 
             }
             PPU_MODE_2_OAM_SCAN => {
+                if self.dot_counter & 1 == 0 && self.obj_buffer.len() < 10 {
+                    let obj_address = self.dot_counter << 1;
+                    let obj_y = self.object_attribute_memory[obj_address as usize] - 17;
 
+                    let obj_height = match self.lcdc_2_obj_is_tall {
+                        true => 16,
+                        false => 8
+                    };
+                    if self.ly >= obj_y && self.ly <= obj_height + obj_y {
+                        self.obj_buffer.push(obj_address);
+                    }
+                }
             }
             PPU_MODE_3_DRAW_PIXELS => {
 
