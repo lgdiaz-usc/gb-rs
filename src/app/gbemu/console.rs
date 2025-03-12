@@ -26,7 +26,7 @@ pub struct GBConsole {
     aux_working_ram_index: usize,
     high_ram: [u8; 0x39],
 
-    //Interrupt regissters
+    //Interrupt registers
     pub interrupt_master_enable_flag: IMEState,
     interrupt_enable: u8,
     interrupt_flag: u8,
@@ -264,13 +264,14 @@ impl GBConsole {
         let stat = self.ppu.read(0xFF41);
         let mut interrupt_flag_temp = self.interrupt_flag & 0b11111100;
 
-        if self.ppu.get_mode() == 1 { //If in VBLANK mode, set VBLANK flag            interrupt_flag_temp |= 0b1;
+        if self.ppu.get_mode() == 1 { //If in VBLANK mode, set VBLANK flag
+            interrupt_flag_temp |= 0b1;
         }
 
         //Set STAT/LCD flag if:
-        if stat & 0b1000 == 0b1000 || //STAT mode 0 is selcted and the mode is 0
-         stat & 0b10001 == 0b10001 || //STAT mode 1 selected and the mode is 1
-         stat & 0b100010 == 0b100010 || //STAT mode 2 is selected and the mode is 2
+        if stat & 0b1011 == 0b1000 || //STAT mode 0 is selcted and the mode is 0
+         stat & 0b10011 == 0b10001 || //STAT mode 1 is selected and the mode is 1
+         stat & 0b100011 == 0b100010 || //STAT mode 2 is selected and the mode is 2
          stat & 0b1000100 == 0b1000100 { //LYC check is selected and LY == LYC
             interrupt_flag_temp |= 0b10;
         }

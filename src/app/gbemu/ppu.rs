@@ -204,12 +204,14 @@ impl PPU {
                 if self.mode_3_penalty == 0 {
                     let tile_map_x = (self.scx >> 3) as u16;
                     let tile_map_y = ((self.scy & 0b11111000) as u16) << 2;
+                    let tile_map_index = (self.lcdc_3_bg_tile_map_area + tile_map_x + tile_map_y) as usize;
                     
                     //TODO: Implement Window fetching
+                    //TODO: Implement Object fetching
                     //If at the beginning of a scanline, fetch pixels from tile cut off by scx
                     if self.lx == 0 {
                         let tile_offset = self.scx & 0b111;
-                        let tile_index = self.video_ram[self.video_ram_index][(self.lcdc_3_bg_tile_map_area + tile_map_x + tile_map_y) as usize];
+                        let tile_index = self.video_ram[0][tile_map_index];
                         let mut pixel_row = self.tile_fetch_bg(tile_index);
 
                         for _ in 0..tile_offset {
@@ -220,7 +222,7 @@ impl PPU {
                     }
                     //every 8 pixels (after the initial pixels are pushed), fetch a new tile
                     else if (self.lx + self.scx) & 0b111 == 0 {
-                        let tile_index = self.video_ram[self.video_ram_index][(self.lcdc_3_bg_tile_map_area + tile_map_x + tile_map_y) as usize];
+                        let tile_index = self.video_ram[0][tile_map_index];
                         let pixel_row = self.tile_fetch_bg(tile_index);
                         self.bg_fifo.extend(pixel_row);
                         self.mode_3_penalty = 8;
@@ -286,7 +288,7 @@ impl PPU {
         }
     }
 
-    fn tile_row_fetch(&self, tile_index: u8, y_flip: bool, x_flip: bool) -> VecDeque<u8> {
+    fn tile_row_fetch(&self, tile_index: u8, y_flip: bool, x_flip: bool, bank: usize) -> VecDeque<u8> {
         let mut tile_row = VecDeque::with_capacity(8);
 
         let tile_address = match self.lcdc_4_tile_data_area {
@@ -301,8 +303,8 @@ impl PPU {
             true => 14 - (((self.scy & 0b111) as u16 + self.ly as u16) << 1),
             false => ((self.scy & 0b111) as u16 + self.ly as u16) << 1
         };
-        let lsb = self.video_ram[self.video_ram_index][(tile_address + row_offset) as usize];
-        let msb = self.video_ram[self.video_ram_index][(tile_address + row_offset) as usize + 1];
+        let lsb = self.video_ram[bank][(tile_address + row_offset) as usize];
+        let msb = self.video_ram[bank][(tile_address + row_offset) as usize + 1];
         for bit in 0..8 {
             let mut pixel = 0;
             if lsb & (1 << bit) > 0 {
@@ -322,7 +324,7 @@ impl PPU {
     }
 
     fn tile_fetch_bg(&self, tile_index: u8) -> VecDeque<Pixel> {
-        let color_row = self.tile_row_fetch(tile_index, false, false);
+        let color_row = self.tile_row_fetch(tile_index, false, false, 0);
         let mut pixel_row = VecDeque::with_capacity(8);
 
         for pixel in color_row {
