@@ -288,7 +288,7 @@ impl PPU {
         }
     }
 
-    fn tile_row_fetch(&self, tile_index: u8, y_flip: bool, x_flip: bool, bank: usize) -> VecDeque<u8> {
+    fn tile_row_fetch(&self, tile_index: u8, tile_height: u8, y_flip: bool, x_flip: bool, bank: usize) -> VecDeque<u8> {
         let mut tile_row = VecDeque::with_capacity(8);
 
         let tile_address = match self.lcdc_4_tile_data_area {
@@ -300,8 +300,8 @@ impl PPU {
         };
 
         let row_offset = match y_flip {
-            true => 14 - (((self.scy & 0b111) as u16 + self.ly as u16) << 1),
-            false => ((self.scy & 0b111) as u16 + self.ly as u16) << 1
+            true => 14 - ((self.ly as u16 - tile_height as u16) << 1),
+            false => (self.ly as u16 - tile_height as u16) << 1
         };
         let lsb = self.video_ram[bank][(tile_address + row_offset) as usize];
         let msb = self.video_ram[bank][(tile_address + row_offset) as usize + 1];
@@ -324,7 +324,8 @@ impl PPU {
     }
 
     fn tile_fetch_bg(&self, tile_index: u8) -> VecDeque<Pixel> {
-        let color_row = self.tile_row_fetch(tile_index, false, false, 0);
+        let tile_height = (self.ly & 0b11111000) - (self.scy & 0b111);
+        let color_row = self.tile_row_fetch(tile_index, tile_height, false, false, 0);
         let mut pixel_row = VecDeque::with_capacity(8);
 
         for pixel in color_row {
