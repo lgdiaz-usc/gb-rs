@@ -100,6 +100,7 @@ impl GBEmu {
                     }
 
                     cpu_delay -= 1;
+                    console.update_ppu();
                 }
             }
         }

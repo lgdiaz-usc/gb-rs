@@ -31,6 +31,7 @@ pub struct PPU {
     obj_buffer: Vec<u16>,
     bg_fifo: VecDeque<Pixel>,
     obj_fifo: VecDeque<Pixel>,
+    screen: Vec<Vec<Pixel>>,
 
     //Misc. variables
     dot_counter: u16, //The current dot on the current scanline;
@@ -70,6 +71,7 @@ impl PPU {
             obj_buffer: Vec::with_capacity(10),
             bg_fifo: VecDeque::with_capacity(8),
             obj_fifo: VecDeque::with_capacity(8),
+            screen: Vec::with_capacity(144),
             dot_counter: 0,
             lx: 0,
             mode_3_penalty: 0,
@@ -206,23 +208,44 @@ impl PPU {
                     //TODO: Implement Window fetching
                     //If at the beginning of a scanline, fetch pixels from tile cut off by scx
                     if self.lx == 0 {
-                        self.mode_3_penalty = self.scx & 0b111;
+                        let tile_offset = self.scx & 0b111;
                         let tile_index = self.video_ram[self.video_ram_index][(self.lcdc_3_bg_tile_map_area + tile_map_x + tile_map_y) as usize];
                         let mut pixel_row = self.tile_fetch_bg(tile_index);
 
-                        for _ in 0..self.mode_3_penalty {
+                        for _ in 0..tile_offset {
                             pixel_row.pop_front();
                         }
-                        self.bg_fifo.extend(pixel_row)
+                        self.bg_fifo.extend(pixel_row);
+                        self.mode_3_penalty = tile_offset + 12;
                     }
                     //every 8 pixels (after the initial pixels are pushed), fetch a new tile
                     else if (self.lx + self.scx) & 0b111 == 0 {
                         let tile_index = self.video_ram[self.video_ram_index][(self.lcdc_3_bg_tile_map_area + tile_map_x + tile_map_y) as usize];
-                        let mut pixel_row = self.tile_fetch_bg(tile_index);
-                        self.bg_fifo.extend(pixel_row)
+                        let pixel_row = self.tile_fetch_bg(tile_index);
+                        self.bg_fifo.extend(pixel_row);
+                        self.mode_3_penalty = 8;
                     }
 
-
+                    //Pixel Mixing
+                    if !self.bg_fifo.is_empty() {
+                        let bg_pixel = self.bg_fifo.pop_front().unwrap();
+                        let obj_pixel = self.obj_fifo.pop_front();
+                        self.screen[self.ly as usize].push(match obj_pixel {
+                            Some(obj_pixel) => {
+                                if obj_pixel.color == 0 {
+                                    bg_pixel
+                                }
+                                else if obj_pixel.bg_priority.unwrap() && bg_pixel.color != 0 {
+                                    bg_pixel
+                                }
+                                else {
+                                    obj_pixel
+                                }
+                            }
+                            None => bg_pixel,
+                        });
+                        self.lx += 1;
+                    }
                 }
                 else {
                     self.mode_3_penalty -= 1;
@@ -234,6 +257,7 @@ impl PPU {
         self.dot_counter += 1;
         if self.ppu_mode == PPU_MODE_2_OAM_SCAN && self.dot_counter == 80 {
             self.ppu_mode = PPU_MODE_3_DRAW_PIXELS;
+            self.screen.push(Vec::with_capacity(160));
         }
         else if self.ppu_mode == PPU_MODE_3_DRAW_PIXELS && self.lx == 160 {
             self.ppu_mode = PPU_MODE_0_HBLANK;
@@ -247,6 +271,7 @@ impl PPU {
             if self.ly >= 153 {
                 self.ly = 0;
                 self.ppu_mode = PPU_MODE_2_OAM_SCAN;
+                self.screen.clear();
             }
             else {
                 self.ly += 1; 
@@ -305,6 +330,10 @@ impl PPU {
         }
 
         pixel_row
+    }
+
+    pub fn get_mode(&self) -> u8 {
+        self.ppu_mode
     }
 }
 
