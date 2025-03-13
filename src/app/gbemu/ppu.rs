@@ -243,7 +243,6 @@ impl PPU {
                                 if self.object_attribute_memory[object as usize + 1] == x_temp {
                                     let mut pixel_row = self.tile_fetch_obj(object);
 
-                                    //TODO: Find out if penalties should stack for objects with the same x coordinate (They currently do not)
                                     if x_temp == 0 {
                                         self.mode_3_penalty += 11;
                                     }
@@ -251,11 +250,15 @@ impl PPU {
                                         self.mode_3_penalty += if self.obj_fifo.len() > 2 {self.obj_fifo.len() as u8 - 2} else {0} + 6;
                                     }
 
-                                    for _ in &self.obj_fifo {
-                                        pixel_row.pop_front();
+                                    for pixel_index in 0..self.obj_fifo.len() {
+                                        if self.obj_fifo[pixel_index].color == 0 {
+                                            self.obj_fifo[pixel_index] = pixel_row.pop_front().unwrap();
+                                        }
+                                        else {
+                                            pixel_row.pop_front();
+                                        }
                                     }
                                     self.obj_fifo.extend(pixel_row);
-                                    break;
                                 }
                             }
                             self.obj_fifo.pop_front();
@@ -280,11 +283,15 @@ impl PPU {
                                 self.mode_3_penalty += if self.obj_fifo.len() > 2 {self.obj_fifo.len() as u8 - 2} else {0} + 6;
                             }
 
-                            for _ in &self.obj_fifo {
-                                pixel_row.pop_front();
+                            for pixel_index in 0..self.obj_fifo.len() {
+                                if self.obj_fifo[pixel_index].color == 0 {
+                                    self.obj_fifo[pixel_index] = pixel_row.pop_front().unwrap();
+                                }
+                                else {
+                                    pixel_row.pop_front();
+                                }
                             }
                             self.obj_fifo.extend(pixel_row);
-                            break;
                         }
                     }
 
