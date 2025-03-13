@@ -207,7 +207,6 @@ impl PPU {
                     let tile_map_index = (self.lcdc_3_bg_tile_map_area + tile_map_x + tile_map_y) as usize;
                     
                     //TODO: Implement Window fetching
-                    //TODO: Implement Object fetching
                     //If at the beginning of a scanline, fetch pixels from tile cut off by scx
                     if self.lx == 0 {
                         let tile_offset = self.scx & 0b111;
@@ -364,7 +363,7 @@ impl PPU {
         let mut pixel_row = VecDeque::with_capacity(8);
 
         for pixel in color_row {
-            pixel_row.push_back(Pixel{color: pixel, palette: None, bg_priority: None});
+            pixel_row.push_back(Pixel{color: pixel, _palette: None, bg_priority: None});
         }
 
         pixel_row
@@ -384,7 +383,7 @@ impl PPU {
         let palette = (obj_attributes & 0b10000) >> 4;
 
         for pixel in color_row {
-            pixel_row.push_back(Pixel{color: pixel, palette: Some(palette), bg_priority: Some(bg_priority)});
+            pixel_row.push_back(Pixel{color: pixel, _palette: Some(palette), bg_priority: Some(bg_priority)});
         }
 
         pixel_row
@@ -393,10 +392,14 @@ impl PPU {
     pub fn get_mode(&self) -> u8 {
         self.ppu_mode
     }
+
+    pub fn dma_transfer(&mut self, value: u8, address: u8) {
+        self.object_attribute_memory[address as usize] = value;
+    }
 }
 
 struct Pixel {
     color: u8,
-    palette: Option<u8>,
+    _palette: Option<u8>,
     bg_priority: Option<bool>
 }

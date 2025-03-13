@@ -31,6 +31,10 @@ pub struct GBConsole {
     interrupt_enable: u8,
     interrupt_flag: u8,
 
+    //Other registers
+    dma: u8,
+    dma_counter: u16,
+
     //External objects
     ppu: PPU
 }
@@ -78,6 +82,8 @@ impl GBConsole {
             interrupt_master_enable_flag: IMEState::Disabled,
             interrupt_enable: 0x00,
             interrupt_flag: 0xE1,
+            dma: 0xFF,
+            dma_counter: 0xA0 << 2,
             ppu: ppu::PPU::new(),
         }
     }
@@ -122,6 +128,7 @@ impl GBConsole {
             //TODO: Implement I/O Registers
             match address {
                 0xFF0F => self.interrupt_flag, //IF
+                0xFF46 => self.dma, //DMA transfer source address 0xXX00 + dma_counter
                 0xFF40 | 0xFF41 | 0xFF42 | 0xFF43 | 0xFF44 | 0xFF45 => self.ppu.read(address), //PPU Registers
                 _ => panic!("ERROR: Unkown register at address ${:x}", address)
             }
@@ -187,6 +194,11 @@ impl GBConsole {
             //TODO: Implement I/O Registers
             let register = match address {
                 0xFF0f => &mut self.interrupt_flag, //IF
+                0xFF46 => { //DMA transfer address. Also starts the DMA transfer process be resetting the dma_counter
+                    self.dma_counter = 0;
+                    self.dma = if value < 0xDf {value} else {0xDF};
+                    return;
+                }
                 0xFF40 | 0xFF41 | 0xFF42 | 0xFF43 | 0xFF44 | 0xFF45 => { //PPU Registers
                     self.ppu.write(address, value);
                     return;
@@ -258,6 +270,17 @@ impl GBConsole {
     }
 
     pub fn update_ppu(&mut self) {
+        if self.dma_counter < 0xA0 << 2 {
+            if self.dma_counter & 0b11 == 0 {
+                let lsb = u16::to_be_bytes(self.dma_counter >> 2)[1];
+                let source_address = u16::from_be_bytes([self.dma, lsb]);
+                let value = self.read(source_address);
+                self.ppu.dma_transfer(value, lsb);
+            }
+
+            self.dma_counter += 1;
+        }
+
         self.ppu.update();
 
         //Update Interrupt flags
