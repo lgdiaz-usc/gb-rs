@@ -218,8 +218,28 @@ impl PPU {
                         }
                         self.bg_fifo.extend(pixel_row);
 
-                        for x_temp in 0..7 {
+                        /*for x_temp in 0..7 {
                             for object in self.obj_buffer.clone() {
+                                if self.object_attribute_memory[object as usize + 1] == x_temp {
+                                    let mut pixel_row = self.tile_fetch_obj(object);
+                                    for _ in &self.obj_fifo {
+                                        pixel_row.pop_front();
+                                    }
+                                    self.obj_fifo.extend(pixel_row);
+                                    break;
+                                }
+                            }
+                            self.obj_fifo.pop_front();
+                        }*/
+
+                        let mut obj_buffer_temp = Vec::with_capacity(10);
+                        for object in self.obj_buffer.clone() {
+                            if self.object_attribute_memory[object as usize + 1] < 8 {
+                                obj_buffer_temp.push(object);
+                            }
+                        }
+                        for x_temp in 0..7 {
+                            for object in obj_buffer_temp.clone() {
                                 if self.object_attribute_memory[object as usize + 1] == x_temp {
                                     let mut pixel_row = self.tile_fetch_obj(object);
                                     for _ in &self.obj_fifo {
