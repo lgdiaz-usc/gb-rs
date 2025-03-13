@@ -242,6 +242,15 @@ impl PPU {
                             for object in obj_buffer_temp.clone() {
                                 if self.object_attribute_memory[object as usize + 1] == x_temp {
                                     let mut pixel_row = self.tile_fetch_obj(object);
+
+                                    //TODO: Find out if penalties should stack for objects with the same x coordinate (They currently do not)
+                                    if x_temp == 0 {
+                                        self.mode_3_penalty += 11;
+                                    }
+                                    else if !self.obj_fifo.is_empty() && pixel_row[0].tile == self.obj_fifo[0].tile {
+                                        self.mode_3_penalty += if self.obj_fifo.len() > 2 {self.obj_fifo.len() as u8 - 2} else {0} + 6;
+                                    }
+
                                     for _ in &self.obj_fifo {
                                         pixel_row.pop_front();
                                     }
@@ -266,6 +275,11 @@ impl PPU {
                     for object in self.obj_buffer.clone() {
                         if self.object_attribute_memory[object as usize + 1] - 8 == self.lx {
                             let mut pixel_row = self.tile_fetch_obj(object);
+                            
+                            if !self.obj_fifo.is_empty() && pixel_row[0].tile == self.obj_fifo[0].tile {
+                                self.mode_3_penalty += if self.obj_fifo.len() > 2 {self.obj_fifo.len() as u8 - 2} else {0} + 6;
+                            }
+
                             for _ in &self.obj_fifo {
                                 pixel_row.pop_front();
                             }
@@ -383,7 +397,7 @@ impl PPU {
         let mut pixel_row = VecDeque::with_capacity(8);
 
         for pixel in color_row {
-            pixel_row.push_back(Pixel{color: pixel, _palette: None, bg_priority: None});
+            pixel_row.push_back(Pixel{color: pixel, _palette: None, bg_priority: None, tile: None});
         }
 
         pixel_row
@@ -401,9 +415,11 @@ impl PPU {
         let mut pixel_row = VecDeque::with_capacity(8);
         let bg_priority = obj_attributes & 0b10000000 > 0;
         let palette = (obj_attributes & 0b10000) >> 4;
+        let tile = (self.object_attribute_memory[oam_index as usize + 1] - 8 + self.scx) & 0b11111000;
+
 
         for pixel in color_row {
-            pixel_row.push_back(Pixel{color: pixel, _palette: Some(palette), bg_priority: Some(bg_priority)});
+            pixel_row.push_back(Pixel{color: pixel, _palette: Some(palette), bg_priority: Some(bg_priority), tile: Some(tile)});
         }
 
         pixel_row
@@ -421,5 +437,6 @@ impl PPU {
 struct Pixel {
     color: u8,
     _palette: Option<u8>,
-    bg_priority: Option<bool>
+    bg_priority: Option<bool>,
+    tile: Option<u8>
 }
