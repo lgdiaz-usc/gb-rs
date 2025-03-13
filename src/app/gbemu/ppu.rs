@@ -218,6 +218,21 @@ impl PPU {
                             pixel_row.pop_front();
                         }
                         self.bg_fifo.extend(pixel_row);
+
+                        for x_temp in 0..7 {
+                            for object in self.obj_buffer.clone() {
+                                if self.object_attribute_memory[object as usize + 1] == x_temp {
+                                    let mut pixel_row = self.tile_fetch_obj(object);
+                                    for _ in &self.obj_fifo {
+                                        pixel_row.pop_front();
+                                    }
+                                    self.obj_fifo.extend(pixel_row);
+                                    break;
+                                }
+                            }
+                            self.obj_fifo.pop_front();
+                        }
+
                         self.mode_3_penalty = tile_offset + 12;
                     }
                     //every 8 pixels (after the initial pixels are pushed), fetch a new tile
@@ -228,13 +243,28 @@ impl PPU {
                         self.mode_3_penalty = 8;
                     }
 
+                    //Fetch objects with the same x coordinate as the current pixel
+                    for object in self.obj_buffer.clone() {
+                        if self.object_attribute_memory[object as usize + 1] - 8 == self.lx {
+                            let mut pixel_row = self.tile_fetch_obj(object);
+                            for _ in &self.obj_fifo {
+                                pixel_row.pop_front();
+                            }
+                            self.obj_fifo.extend(pixel_row);
+                            break;
+                        }
+                    }
+
                     //Pixel Mixing
                     if !self.bg_fifo.is_empty() {
                         let bg_pixel = self.bg_fifo.pop_front().unwrap();
                         let obj_pixel = self.obj_fifo.pop_front();
                         self.screen[self.ly as usize].push(match obj_pixel {
                             Some(obj_pixel) => {
-                                if obj_pixel.color == 0 {
+                                if !self.lcdc_1_obj_enable {
+                                    bg_pixel
+                                }
+                                else if obj_pixel.color == 0 {
                                     bg_pixel
                                 }
                                 else if obj_pixel.bg_priority.unwrap() && bg_pixel.color != 0 {
@@ -288,10 +318,10 @@ impl PPU {
         }
     }
 
-    fn tile_row_fetch(&self, tile_index: u8, tile_height: u8, y_flip: bool, x_flip: bool, bank: usize) -> VecDeque<u8> {
+    fn tile_row_fetch(&self, tile_index: u8, tile_height: u8, y_flip: bool, x_flip: bool, bank: usize, is_obj: bool) -> VecDeque<u8> {
         let mut tile_row = VecDeque::with_capacity(8);
 
-        let tile_address = match self.lcdc_4_tile_data_area {
+        let tile_address = match self.lcdc_4_tile_data_area || is_obj {
             true => (tile_index as u16) << 4,
             false => {
                 let area_start = if tile_index & 0x80 > 0 {0x8000 - 0x8000} else {0x9000 - 0x8000};
@@ -299,8 +329,12 @@ impl PPU {
             }
         };
 
+        let flip_edge = match is_obj && self.lcdc_2_obj_is_tall {
+            true => 30,
+            false => 14
+        };
         let row_offset = match y_flip {
-            true => 14 - ((self.ly as u16 - tile_height as u16) << 1),
+            true => flip_edge - ((self.ly as u16 - tile_height as u16) << 1),
             false => (self.ly as u16 - tile_height as u16) << 1
         };
         let lsb = self.video_ram[bank][(tile_address + row_offset) as usize];
@@ -325,11 +359,32 @@ impl PPU {
 
     fn tile_fetch_bg(&self, tile_index: u8) -> VecDeque<Pixel> {
         let tile_height = (self.ly & 0b11111000) - (self.scy & 0b111);
-        let color_row = self.tile_row_fetch(tile_index, tile_height, false, false, 0);
+        //TODO:: Add support for CGB (BG attribute map support)
+        let color_row = self.tile_row_fetch(tile_index, tile_height, false, false, 0, false);
         let mut pixel_row = VecDeque::with_capacity(8);
 
         for pixel in color_row {
-            pixel_row.push_back(Pixel{color: pixel, palette: Option::None, bg_priority: Option::None});
+            pixel_row.push_back(Pixel{color: pixel, palette: None, bg_priority: None});
+        }
+
+        pixel_row
+    }
+
+    fn tile_fetch_obj(&self, oam_index: u16) -> VecDeque<Pixel> {
+        let tile_height = self.object_attribute_memory[oam_index as usize] - 16;
+        let tile_index = self.object_attribute_memory[oam_index as usize + 2];
+        let obj_attributes = self.object_attribute_memory[oam_index as usize + 3];
+        let y_flip = obj_attributes & 0b1000000 > 0;
+        let x_flip = obj_attributes & 0b100000 > 0;
+        //TODO: Add support for CGB (VRMA bank and palette support)
+        let color_row = self.tile_row_fetch(tile_index, tile_height, y_flip, x_flip, 0, true);
+
+        let mut pixel_row = VecDeque::with_capacity(8);
+        let bg_priority = obj_attributes & 0b10000000 > 0;
+        let palette = (obj_attributes & 0b10000) >> 4;
+
+        for pixel in color_row {
+            pixel_row.push_back(Pixel{color: pixel, palette: Some(palette), bg_priority: Some(bg_priority)});
         }
 
         pixel_row
