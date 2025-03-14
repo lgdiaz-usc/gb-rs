@@ -25,7 +25,10 @@ pub struct CartridgeInfo {
 
 impl CartridgeInfo {
     pub fn new(header: &[u8]) -> Self {
-        let title = std::str::from_utf8(&header[..16]).expect("Invalid String").to_ascii_uppercase();
+        let mut title = String::new();
+        for byte in &header[..16] {
+            title.push((*byte as char).to_ascii_uppercase());
+        }
         let manufacturer_code = std::str::from_utf8(&header[11..15]).expect("Invalid String").to_ascii_uppercase();
         let cgb_flag = match header[15] {
             0x80 => CGBState::Both,

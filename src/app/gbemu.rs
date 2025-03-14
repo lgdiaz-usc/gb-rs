@@ -1,6 +1,7 @@
 use core::time;
 use std::{fs::File, io::Read, sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex}, thread};
 use console::GBConsole;
+use egui::Color32;
 
 use super::cartridge_info::CartridgeInfo;
 
@@ -11,7 +12,8 @@ mod ppu;
 pub struct GBEmu {
     pub rom_file_path: Arc<Mutex<Option<String>>>,
     pub rom_info: Arc<Mutex<Option<CartridgeInfo>>>,
-    pub file_changed: Arc<AtomicBool>
+    pub file_changed: Arc<AtomicBool>,
+    pub screen_pixels: Arc<Mutex<Option<[[Color32; 160]; 144]>>>,
 }
 
 impl Default for GBEmu {
@@ -19,7 +21,8 @@ impl Default for GBEmu {
         Self {
             rom_file_path: Arc::new(Mutex::new(None)),
             rom_info: Arc::new(Mutex::new(None)),
-            file_changed: Arc::new(AtomicBool::from(false))
+            file_changed: Arc::new(AtomicBool::from(false)),
+            screen_pixels: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -48,7 +51,7 @@ impl GBEmu {
         r
     }
 
-    fn processor(&self, _frame: egui::Context) {
+    fn processor(&self, frame: egui::Context) {
         //Gets a local copyof the rom file path so we don't need to request access to it every time we read
         let current_file_path: String;
         {
@@ -103,7 +106,56 @@ impl GBEmu {
                     console.update_ppu();
                 }
             }
+
+            let internal_screen = console.dump_screen();
+            let mut pixel_colors = [[Color32::WHITE; 160]; 144];
+            let bg_pallette = Self::dmg_pallette(console.dmg_bg_pallette);
+            let obj0_pallette = Self::dmg_pallette(console.dmg_obj_pallette_0);
+            let obj1_pallette = Self::dmg_pallette(console.dmg_obj_pallette_1);
+
+            if (*internal_screen).len() == 0 {
+                continue;
+            }
+            for i in 0..144 {
+                for j in 0..160 {
+                    pixel_colors[i][j] = match (*internal_screen)[i][j].palette {
+                        None => bg_pallette[internal_screen[i][j].color as usize],
+                        Some(pallette) => {
+                            if pallette == 0 {
+                                obj0_pallette[internal_screen[i][j].color as usize]
+                            }
+                            else {
+                                obj1_pallette[internal_screen[i][j].color as usize]
+                            }
+                        }
+                    }
+                }
+            }
+
+            {
+                let mut lock = self.screen_pixels.lock().unwrap();
+                *lock = Some(pixel_colors);
+                drop(lock);
+            }
+            frame.request_repaint();
         }
+    }
+
+    fn dmg_pallette(console_pallette: u8) -> [Color32; 4] {
+        let mut pallette = [Color32::WHITE; 4];
+
+        for i in 0..4 {
+            let color_code = (console_pallette >> (i * 2)) & 0b11;
+            pallette[i] = match color_code {
+                0b00 => Color32::WHITE,
+                0b01 => Color32::LIGHT_GRAY,
+                0b10 => Color32::DARK_GRAY,
+                0b11 => Color32::BLACK,
+                _ => panic!("Error: Unkown index!")
+            }
+        }
+
+        pallette
     }
 }
 

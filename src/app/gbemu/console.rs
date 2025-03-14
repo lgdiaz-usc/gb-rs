@@ -24,7 +24,7 @@ pub struct GBConsole {
     working_ram: [u8; 0x2000],
     aux_working_ram: Vec<[u8; 0x4000]>,
     aux_working_ram_index: usize,
-    high_ram: [u8; 0x39],
+    high_ram: [u8; 0x80],
 
     //Interrupt registers
     pub interrupt_master_enable_flag: IMEState,
@@ -32,9 +32,9 @@ pub struct GBConsole {
     interrupt_flag: u8,
 
     //DMG Pallette registers
-    dmg_bg_pallette: u8,    //BGP
-    dmg_obj_pallette_0: u8, //OBP0
-    dmg_obj_pallette_1: u8, //OBP1
+    pub dmg_bg_pallette: u8,    //BGP
+    pub dmg_obj_pallette_0: u8, //OBP0
+    pub dmg_obj_pallette_1: u8, //OBP1
 
     //DMA registers
     dma: u8,
@@ -83,7 +83,7 @@ impl GBConsole {
             working_ram: [0; 0x2000],
             aux_working_ram: aux_working_ram,
             aux_working_ram_index: 0,
-            high_ram: [0; 0x39],
+            high_ram: [0; 0x80],
             interrupt_master_enable_flag: IMEState::Disabled,
             interrupt_enable: 0x00,
             interrupt_flag: 0xE1,
@@ -120,7 +120,8 @@ impl GBConsole {
         //Echo RAM (Use is prohibited by nintendo)
         else if address < 0xFE00 {
             //TODO: Properly impmlent Echo RAM
-            panic!("ERROR: Echo RAM access prohibited");
+            //panic!("ERROR: Echo RAM access prohibited");
+            self.read(address - 0x2000)
         }
         //Object Attribute Memory
         else if address < 0xFEA0 {
@@ -129,7 +130,14 @@ impl GBConsole {
         //Not Usable (Use is prohibited by Nintendo)
         else if address < 0xFF00 {
             //TODO: Properly implement this address space (VERY low priority)
-            panic!("ERROR: Prohibited Address Space")
+            //panic!("ERROR: Prohibited Address Space")
+            let ppu_state = self.ppu.get_mode();
+            if ppu_state == 2 || ppu_state == 3 {
+                0xFF
+            }
+            else {
+                0x00
+            }
         }
         //I/O Registers
         else if address < 0xFF80 {
@@ -154,7 +162,10 @@ impl GBConsole {
                 0xFF68..0xFF6D => 0, //Other CGB registers
                 0xFF70 => 0, //SVBK
                 0xFF76 | 0xFF77 => 0, //CGB Audio registers
-                _ => panic!("ERROR: Unkown register at address ${:x}", address)
+                _ => {
+                    println!("ERROR: Unkown register at address ${:x}", address);
+                    0
+                }
             }
         }
         //HRAM
@@ -202,7 +213,8 @@ impl GBConsole {
         //Echo RAM (Use is prohibited by nintendo)
         else if address < 0xFE00 {
             //TODO: Properly impmlent Echo RAM
-            panic!("ERROR: Echo RAM access prohibited");
+            //panic!("ERROR: Echo RAM access prohibited");
+            self.write(address - 0x2000, value);
         }
         //Object Attribute Memory
         else if address < 0xFEA0 {
@@ -211,7 +223,7 @@ impl GBConsole {
         //Not Usable (Use is prohibited by Nintendo)
         else if address < 0xFF00 {
             //TODO: Properly implement this address space (VERY low priority)
-            panic!("ERROR: Prohibited Address Space")
+            //panic!("ERROR: Prohibited Address Space")
         }
         //I/O Registers
         else if address < 0xFF80 {
@@ -242,7 +254,10 @@ impl GBConsole {
                 0xFF68..0xFF6D => return, //Other CGB registers
                 0xFF70 => return, //SVBK
                 0xFF76 | 0xFF77 => return, //CGB audio registers
-                _ => panic!("ERROR: Unknown register at address ${:x}", address)
+                _ => {
+                    println!("ERROR: Unknown register at address ${:x}", address);
+                    return;
+                }
             };
 
             *register = value;
@@ -339,6 +354,10 @@ impl GBConsole {
         }
         
         self.interrupt_flag = interrupt_flag_temp;
+    }
+
+    pub fn dump_screen(&self) -> &Vec<Vec<ppu::Pixel>> {
+        self.ppu.dump_screen()
     }
 
     pub fn execute_instruction(&mut self) -> u8 {
@@ -651,7 +670,7 @@ impl GBConsole {
                                 cycle_count = 8;
                                 let incrementor = if opcode & 0o010 == 0 {1} else {u16::MAX};
                                 let mut is_sp = false;
-                                let (register_high, register_low) = match opcode & 060 {
+                                let (register_high, register_low) = match opcode & 0o060 {
                                     0o000 => (&mut self.b, &mut self.c),
                                     0o020 => (&mut self.d, &mut self.e),
                                     0o040 => (&mut self.h, &mut self.l),
@@ -1067,7 +1086,7 @@ impl GBConsole {
                                 }
                             }
                             0o007 => { //RST vec
-                                let jump_address_vector = match opcode & 070 {
+                                let jump_address_vector = match opcode & 0o070 {
                                     0o000 => 0x00,
                                     0o010 => 0x08,
                                     0o020 => 0x10,

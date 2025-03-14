@@ -174,6 +174,8 @@ impl PPU {
                 0xFF43 => &mut self.scx,
                 0xFF44 => return, //LY is read only!
                 0xFF45 => &mut self.ly_compare, //LYC
+                0xFF4A => &mut self.wy,
+                0xFF4B => &mut self.wx,
                 _ => panic!("ERROR: Unkown register at address ${:x}", address)
             };
 
@@ -410,7 +412,7 @@ impl PPU {
         let mut pixel_row = VecDeque::with_capacity(8);
 
         for pixel in color_row {
-            pixel_row.push_back(Pixel{color: pixel, _palette: None, bg_priority: None, tile: None});
+            pixel_row.push_back(Pixel{color: pixel, palette: None, bg_priority: None, tile: None});
         }
 
         pixel_row
@@ -432,7 +434,7 @@ impl PPU {
 
 
         for pixel in color_row {
-            pixel_row.push_back(Pixel{color: pixel, _palette: Some(palette), bg_priority: Some(bg_priority), tile: Some(tile)});
+            pixel_row.push_back(Pixel{color: pixel, palette: Some(palette), bg_priority: Some(bg_priority), tile: Some(tile)});
         }
 
         pixel_row
@@ -445,11 +447,15 @@ impl PPU {
     pub fn dma_transfer(&mut self, value: u8, address: u8) {
         self.object_attribute_memory[address as usize] = value;
     }
+
+    pub fn dump_screen(&self) -> &Vec<Vec<Pixel>> {
+        &self.screen
+    }
 }
 
-struct Pixel {
-    color: u8,
-    _palette: Option<u8>,
+pub struct Pixel {
+    pub color: u8,
+    pub palette: Option<u8>,
     bg_priority: Option<bool>,
     tile: Option<u8>
 }

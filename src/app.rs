@@ -3,6 +3,7 @@ use std::sync::atomic::Ordering;
 pub mod gbemu;
 pub mod cartridge_info;
 pub use cartridge_info::CGBState;
+use egui::{epaint::RectShape, Color32, Pos2, Rect, Rounding, Shape, Stroke};
 
 
 impl eframe::App for gbemu::GBEmu {
@@ -10,6 +11,23 @@ impl eframe::App for gbemu::GBEmu {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
+
+        let size = ctx.input(|i: &egui::InputState| i.screen_rect().max);
+        let mut game_width = size.x;
+        let mut game_height = size.y;
+        let mut x_offset = 0.0;
+        let mut y_offset = 0.0;
+
+        let game_ratio = 160.0 / 144.0;
+        let screen_ratio = game_width / game_height;
+        if screen_ratio < game_ratio {
+            game_height = game_width / game_ratio;
+            y_offset = (size.y - game_height) / 2.0;
+        }
+        else if screen_ratio > game_ratio {
+            game_width = game_height * game_ratio;
+            x_offset = (size.x - game_width) / 2.0;
+        }
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
@@ -59,6 +77,22 @@ impl eframe::App for gbemu::GBEmu {
                 });
             }
             drop(lock);
+
+            let lock = self.screen_pixels.lock().unwrap();
+            if let Some(color_array) = lock.clone() {
+                let painter = ui.painter();
+                let mut pixel_stack: Vec<Shape> = Vec::new();
+
+                for y in 0..144 {
+                    for x in 0..160 {
+                        pixel_stack.push(Shape::Rect(to_rect(color_array[y][x], game_height, game_width, y_offset, x_offset, x as f32, y as f32)));
+                    }
+                }
+
+                painter.extend(pixel_stack);
+            }
+            drop(lock);
+
             let lock = self.rom_info.lock().unwrap();
             if let Some(info) = lock.clone() {
                 ui.horizontal(|ui| {
@@ -116,6 +150,27 @@ impl eframe::App for gbemu::GBEmu {
             }
         });
     }
+}
+
+fn to_rect(color: Color32, game_height: f32, game_width: f32, y_offset: f32, x_offset: f32, x: f32, y: f32) -> RectShape {
+    let pixel_width = game_width / 160.0;
+    let pixel_height = game_height / 144.0;
+
+    let min_x = x_offset + (pixel_width * x);
+    let min_y = y_offset + (pixel_height * y);
+
+    let max_x = min_x + pixel_width;
+    let max_y = min_y + pixel_height;
+    
+    RectShape::new(
+        Rect {
+            min: Pos2::new(min_x, min_y),
+            max: Pos2::new(max_x, max_y)
+        },
+        Rounding::ZERO,
+        color,
+        Stroke::NONE
+    )
 }
 
 /*fn parse_tile(tile: Tile) {
