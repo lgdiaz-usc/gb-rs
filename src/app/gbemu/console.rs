@@ -31,7 +31,12 @@ pub struct GBConsole {
     interrupt_enable: u8,
     interrupt_flag: u8,
 
-    //Other registers
+    //DMG Pallette registers
+    dmg_bg_pallette: u8,    //BGP
+    dmg_obj_pallette_0: u8, //OBP0
+    dmg_obj_pallette_1: u8, //OBP1
+
+    //DMA registers
     dma: u8,
     dma_counter: u16,
 
@@ -82,6 +87,9 @@ impl GBConsole {
             interrupt_master_enable_flag: IMEState::Disabled,
             interrupt_enable: 0x00,
             interrupt_flag: 0xE1,
+            dmg_bg_pallette: 0xFC,
+            dmg_obj_pallette_0: 0x00,
+            dmg_obj_pallette_1: 0x00,
             dma: 0xFF,
             dma_counter: 0xA0 << 2,
             ppu: ppu::PPU::new(),
@@ -127,9 +135,25 @@ impl GBConsole {
         else if address < 0xFF80 {
             //TODO: Implement I/O Registers
             match address {
+                0xFF00 => 0, //P1/JOYP
+                0xFF01 | 0xFF02 => 0, //Serial transfer registers
+                0xFF04..0xFF0F => 0, //Timing registers
                 0xFF0F => self.interrupt_flag, //IF
+                0xFF10..0xFF27 => 0, //Audio registers
+                0xFF30..0xFF40 => 0, //Waveform registers             
                 0xFF46 => self.dma, //DMA transfer source address 0xXX00 + dma_counter
-                0xFF40 | 0xFF41 | 0xFF42 | 0xFF43 | 0xFF44 | 0xFF45 => self.ppu.read(address), //PPU Registers
+                0xFF47 => self.dmg_bg_pallette, //BGP
+                0xFF48 => self.dmg_obj_pallette_0, //OBP0
+                0xFF49 => self.dmg_obj_pallette_1, //OBP1
+                0xFF40..0xFF46 | 0xFF4A | 0xFF4B => self.ppu.read(address), //PPU Registers
+                0xFF4D => 0, //KEY1
+                0xFF4F => 0, //VBK
+                0xFF51..0xFF55 => 0, //HDMA1-4 (write only)
+                0xFF55 => 0, //HDMA5
+                0xFF56 => 0, //RP
+                0xFF68..0xFF6D => 0, //Other CGB registers
+                0xFF70 => 0, //SVBK
+                0xFF76 | 0xFF77 => 0, //CGB Audio registers
                 _ => panic!("ERROR: Unkown register at address ${:x}", address)
             }
         }
@@ -193,16 +217,31 @@ impl GBConsole {
         else if address < 0xFF80 {
             //TODO: Implement I/O Registers
             let register = match address {
+                0xFF00 => return, //P1/JoyP
+                0xFF01 | 0xFF02 => return, //Serial transfer registers
+                0xFF03..0xFF08 => return, //Timing registers
                 0xFF0f => &mut self.interrupt_flag, //IF
                 0xFF46 => { //DMA transfer address. Also starts the DMA transfer process be resetting the dma_counter
                     self.dma_counter = 0;
                     self.dma = if value < 0xDf {value} else {0xDF};
                     return;
                 }
-                0xFF40 | 0xFF41 | 0xFF42 | 0xFF43 | 0xFF44 | 0xFF45 => { //PPU Registers
+                0xFF10..0xFF27 => return, //Sound registers
+                0xFF30..0xFF40 => return, //Waveform registers
+                0xFF47 => &mut self.dmg_bg_pallette, //BGP
+                0xFF48 => &mut self.dmg_obj_pallette_0, //OBP0
+                0xFF49 => &mut self.dmg_obj_pallette_1, //OBP1
+                0xFF40..0xFF46 | 0xFF4A | 0xFF4B => { //PPU Registers
                     self.ppu.write(address, value);
                     return;
                 }
+                0xFF4D => return, //KEY1
+                0xFF4F => return, //VBK
+                0xFF51..0xFF56 => return, //HDMA1-5
+                0xFF56 => return, //RP
+                0xFF68..0xFF6D => return, //Other CGB registers
+                0xFF70 => return, //SVBK
+                0xFF76 | 0xFF77 => return, //CGB audio registers
                 _ => panic!("ERROR: Unknown register at address ${:x}", address)
             };
 

@@ -26,6 +26,8 @@ pub struct PPU {
     ly_compare: u8,
     scy: u8,
     scx: u8,
+    wy: u8,
+    wx: u8,
 
     //Buffers for the rendering process
     obj_buffer: Vec<u16>,
@@ -68,6 +70,8 @@ impl PPU {
             ly_compare: 0,
             scy: 0x00,
             scx: 0x00,
+            wy: 0x00,
+            wx: 0x00,
             obj_buffer: Vec::with_capacity(10),
             bg_fifo: VecDeque::with_capacity(8),
             obj_fifo: VecDeque::with_capacity(8),
@@ -130,6 +134,8 @@ impl PPU {
                 0xFF43 => self.scx,
                 0xFF44 => self.ly,
                 0xFF45 => self.ly_compare, //LYC
+                0xFF4A => self.wy,
+                0xFF4B => self.wx,
                 _ => panic!("ERROR: Unknown register at address ${:x}", address)
             }
         }
