@@ -2,7 +2,7 @@ use std::{fs::File, io::Bytes};
 
 use crate::{app::cartridge_info::CartridgeInfo, mappers::{Mapper, NoMBC, MBC1}};
 
-use super::ppu::{self, PPU};
+use super::ppu::{self, Pixel, PPU};
 
 pub struct GBConsole {
     //CPU Registers
@@ -30,6 +30,11 @@ pub struct GBConsole {
     pub interrupt_master_enable_flag: IMEState,
     interrupt_enable: u8,
     interrupt_flag: u8,
+
+    //Serial data transfer registers
+    serial_byte: u8, //SB
+    serial_control: u8, //SC
+    serial_counter: u8, //Counts down from 8 per cycle.
 
     //DMG Pallette registers
     pub dmg_bg_pallette: u8,    //BGP
@@ -87,6 +92,9 @@ impl GBConsole {
             interrupt_master_enable_flag: IMEState::Disabled,
             interrupt_enable: 0x00,
             interrupt_flag: 0xE1,
+            serial_byte: 0x00,
+            serial_control: 0x7E,
+            serial_counter: 0,
             dmg_bg_pallette: 0xFC,
             dmg_obj_pallette_0: 0x00,
             dmg_obj_pallette_1: 0x00,
@@ -144,7 +152,8 @@ impl GBConsole {
             //TODO: Implement I/O Registers
             match address {
                 0xFF00 => 0, //P1/JOYP
-                0xFF01 | 0xFF02 => 0, //Serial transfer registers
+                0xFF01 => self.serial_byte, //SB
+                0xFF02 => self.serial_control, //SC
                 0xFF04..0xFF0F => 0, //Timing registers
                 0xFF0F => self.interrupt_flag, //IF
                 0xFF10..0xFF27 => 0, //Audio registers
@@ -230,7 +239,22 @@ impl GBConsole {
             //TODO: Implement I/O Registers
             let register = match address {
                 0xFF00 => return, //P1/JoyP
-                0xFF01 | 0xFF02 => return, //Serial transfer registers
+                0xFF01 => { //SB
+                    if self.serial_control & 0x80 > 0 {
+                        return;
+                    }
+                    &mut self.serial_byte
+                }
+                0xFF02 => { //SC
+                    if self.serial_control & 0x80 > 0 {
+                        self.serial_control = value | 0x80;
+                        return;
+                    }
+                    else if value & 0x80 > 0 {
+                        self.serial_counter = 8;
+                    }
+                    &mut self.serial_control
+                }
                 0xFF03..0xFF08 => return, //Timing registers
                 0xFF0f => &mut self.interrupt_flag, //IF
                 0xFF46 => { //DMA transfer address. Also starts the DMA transfer process be resetting the dma_counter
@@ -356,7 +380,27 @@ impl GBConsole {
         self.interrupt_flag = interrupt_flag_temp;
     }
 
-    pub fn dump_screen(&self) -> &Vec<Vec<ppu::Pixel>> {
+    pub fn check_serial(&mut self) -> Option<u8> {
+        let mut transferred_byte = None;
+
+        if self.serial_counter == 8 {
+            transferred_byte = Some(self.serial_byte);
+        }
+
+        if self.serial_counter > 0 {
+            self.serial_counter -= 1;
+            self.serial_byte <<= 1;
+            
+            if self.serial_counter == 0 {
+                self.serial_control &= 0x7F;
+                self.interrupt_flag |= 0b1000;
+            }
+        }
+
+        transferred_byte
+    }
+
+    pub fn dump_screen(&self) -> &[[Pixel; 160]; 144] {
         self.ppu.dump_screen()
     }
 

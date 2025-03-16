@@ -88,6 +88,8 @@ impl GBEmu {
         let rom_file = File::open(current_file_path.clone()).expect("ERROR: File not found!").bytes();
         let mut console = GBConsole::new(info, rom_file);
 
+        let mut console_output = String::new();
+
         let mut cpu_delay = 0;
         '_Frame: loop {
             for _scanline in 0..154 {
@@ -104,8 +106,14 @@ impl GBEmu {
 
                     cpu_delay -= 1;
                     console.update_ppu();
+                    if let Some(serial_output) = console.check_serial() {
+                        console_output.push((serial_output as char).to_ascii_uppercase());
+                    }
                 }
             }
+
+            print!("{}", console_output);
+            console_output.clear();
 
             let internal_screen = console.dump_screen();
             let mut pixel_colors = [[Color32::WHITE; 160]; 144];
@@ -113,9 +121,6 @@ impl GBEmu {
             let obj0_pallette = Self::dmg_pallette(console.dmg_obj_pallette_0);
             let obj1_pallette = Self::dmg_pallette(console.dmg_obj_pallette_1);
 
-            if (*internal_screen).len() == 0 {
-                continue;
-            }
             for i in 0..144 {
                 for j in 0..160 {
                     pixel_colors[i][j] = match (*internal_screen)[i][j].palette {
