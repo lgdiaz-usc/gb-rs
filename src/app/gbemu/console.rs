@@ -36,6 +36,13 @@ pub struct GBConsole {
     serial_control: u8, //SC
     serial_counter: u8, //Counts down from 8 per cycle.
 
+    //Timing registers
+    timer_divider: u16, //DIV
+    timer_counter: u8, //TIMA
+    timer_modulo: u8, //TMA
+    timer_control: u8, //TAC
+    timer_overflowed: bool,
+
     //DMG Pallette registers
     pub dmg_bg_pallette: u8,    //BGP
     pub dmg_obj_pallette_0: u8, //OBP0
@@ -95,6 +102,11 @@ impl GBConsole {
             serial_byte: 0x00,
             serial_control: 0x7E,
             serial_counter: 0,
+            timer_divider: 0xAB << 6,
+            timer_counter: 0x00,
+            timer_modulo: 0x00,
+            timer_control: 0xF8,
+            timer_overflowed: false,
             dmg_bg_pallette: 0xFC,
             dmg_obj_pallette_0: 0x00,
             dmg_obj_pallette_1: 0x00,
@@ -154,7 +166,10 @@ impl GBConsole {
                 0xFF00 => 0, //P1/JOYP
                 0xFF01 => self.serial_byte, //SB
                 0xFF02 => self.serial_control, //SC
-                0xFF04..0xFF0F => 0, //Timing registers
+                0xFF04 => (self.timer_divider >> 6).to_be_bytes()[1], //DIV
+                0xFF05 => self.timer_counter, //TIMA
+                0xFF06 => self.timer_modulo, //TMA
+                0xFF07 => self.timer_control, //TAC
                 0xFF0F => self.interrupt_flag, //IF
                 0xFF10..0xFF27 => 0, //Audio registers
                 0xFF30..0xFF40 => 0, //Waveform registers             
@@ -255,7 +270,12 @@ impl GBConsole {
                     }
                     &mut self.serial_control
                 }
-                0xFF03..0xFF08 => return, //Timing registers
+                0xFF04 => { //DIV
+                    self.timer_divider = 0;
+                    return;                }
+                0xFF05 => &mut self.timer_counter, //TIMA
+                0xFF06 => &mut self.timer_modulo, //TMA
+                0xFF07 => &mut self.timer_control, //TAC
                 0xFF0f => &mut self.interrupt_flag, //IF
                 0xFF46 => { //DMA transfer address. Also starts the DMA transfer process be resetting the dma_counter
                     self.dma_counter = 0;
@@ -390,7 +410,7 @@ impl GBConsole {
         if self.serial_counter > 0 {
             self.serial_counter -= 1;
             self.serial_byte <<= 1;
-            
+
             if self.serial_counter == 0 {
                 self.serial_control &= 0x7F;
                 self.interrupt_flag |= 0b1000;
@@ -398,6 +418,35 @@ impl GBConsole {
         }
 
         transferred_byte
+    }
+
+    pub fn update_timer(&mut self) {
+        //timer counter is reset and interrupt is requested on the m-cycle after overflow
+        if self.timer_overflowed {
+            self.timer_counter = self.timer_modulo;
+            self.interrupt_flag |= 0b100;
+            self.timer_overflowed = false;
+        }
+
+        self.timer_divider += 1;
+
+        if self.timer_control & 0b100 > 0 {
+            let increment_every = match self.timer_control & 0b11 {
+                0b00 => 0xFF,
+                0b01 => 0x04,
+                0b10 => 0x0F,
+                0b11 => 0x3F,
+                _ => panic!("ERROR: Increment value out of bounds!")
+            };
+
+            if self.timer_divider & increment_every == 0 {
+                self.timer_counter += 1;
+
+                if self.timer_counter == 0 {
+                    self.timer_overflowed = true;
+                }
+            }
+        }
     }
 
     pub fn dump_screen(&self) -> &[[Pixel; 160]; 144] {
