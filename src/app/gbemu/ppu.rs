@@ -187,6 +187,10 @@ impl PPU {
     }
 
     pub fn update(&mut self) {
+        if !self.lcdc_7_lcd_enabled {
+            self.ppu_mode = PPU_MODE_1_VBLANK;
+        }
+        
         match self.ppu_mode {
             PPU_MODE_0_HBLANK => {
                 
@@ -211,14 +215,16 @@ impl PPU {
             PPU_MODE_3_DRAW_PIXELS => {
                 if self.mode_3_penalty == 0 {
                     let tile_map_x = (self.scx >> 3) as u16;
-                    let tile_map_y = ((self.scy & 0b11111000) as u16) << 2;
+                    let tile_map_y = ((self.scy as u16) & 0xFFF8) << 2;
                     let tile_map_index = (self.lcdc_3_bg_tile_map_area + tile_map_x + tile_map_y) as usize;
                     
                     //TODO: Implement Window fetching
                     //If at the beginning of a scanline, fetch pixels from tile cut off by scx
                     if self.lx == 0 {
                         let tile_offset = self.scx & 0b111;
-                        let tile_index = self.video_ram[0][tile_map_index];
+                        let tile_map_offset_x = (self.lx >> 3) as usize;
+                        let tile_map_offset_y = ((self.ly as u16 & 0xFFF8) << 2) as usize;
+                        let tile_index = self.video_ram[0][tile_map_index + tile_map_offset_x + tile_map_offset_y];
                         let mut pixel_row = self.tile_fetch_bg(tile_index);
 
                         for _ in 0..tile_offset {
@@ -276,7 +282,9 @@ impl PPU {
                     }
                     //every 8 pixels (after the initial pixels are pushed), fetch a new tile
                     else if (self.lx + self.scx) & 0b111 == 0 {
-                        let tile_index = self.video_ram[0][tile_map_index];
+                        let tile_map_offset_x = (self.lx >> 3) as usize;
+                        let tile_map_offset_y = ((self.ly as u16 & 0xFFF8) << 2) as usize;
+                        let tile_index = self.video_ram[0][tile_map_index + tile_map_offset_x + tile_map_offset_y];
                         let pixel_row = self.tile_fetch_bg(tile_index);
                         self.bg_fifo.extend(pixel_row);
                         self.mode_3_penalty = 8;

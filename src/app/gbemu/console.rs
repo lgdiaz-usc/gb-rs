@@ -833,19 +833,19 @@ impl GBConsole {
                             
                                 let mut is_hl = false;
                                 let value = self.read(self.program_counter + 1);
-                                let register = match opcode & 0o007 {
+                                let register = match opcode & 0o070 {
                                     0o000 => &mut self.b,
-                                    0o001 => &mut self.c,
-                                    0o002 => &mut self.d,
-                                    0o003 => &mut self.e,
-                                    0o004 => &mut self.h,
-                                    0o005 => &mut self.l,
-                                    0o006 => {
+                                    0o010 => &mut self.c,
+                                    0o020 => &mut self.d,
+                                    0o030 => &mut self.e,
+                                    0o040 => &mut self.h,
+                                    0o050 => &mut self.l,
+                                    0o060 => {
                                         is_hl = true;
                                         cycle_count = 12;
                                         &mut self.b //<== Throwaway value
                                     }
-                                    0o007 => &mut self.a,
+                                    0o070 => &mut self.a,
                                     _ => panic!("ERROR: Register octet out of bounds!")
                                 };
                             
