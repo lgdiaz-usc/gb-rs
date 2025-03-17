@@ -5,23 +5,30 @@ pub struct MBC1 {
     aux_rom_bank_index: usize,
     ram_banks: Option<Vec<[u8; 0x1000]>>,
     ram_bank_index: usize,
-    has_battery: bool,
+    _has_battery: bool,
     ram_enabled: bool,
 }
 
 impl MBC1 {
     pub fn new(rom_banks: Vec<[u8; 0x4000]>, ram_bank_count: u8, has_battery: bool) -> Self {
-        let mut ram_banks = Vec::with_capacity(ram_bank_count as usize);
-        for _ in 0..ram_bank_count {
-            ram_banks.push([0; 0x1000]);
+        let ram_banks;
+        if ram_bank_count == 0 {
+            ram_banks = None;
+        }
+        else {
+            let mut ram_bank_vec = Vec::with_capacity(ram_bank_count as usize);
+            for _ in 0..ram_bank_count {
+                ram_bank_vec.push([0; 0x1000]);
+            }
+            ram_banks = Some(ram_bank_vec);
         }
 
         Self {
             rom_banks: rom_banks,
             aux_rom_bank_index: 1,
-            ram_banks: Some(ram_banks),
+            ram_banks: ram_banks,
             ram_bank_index: 0,
-            has_battery: has_battery,
+            _has_battery: has_battery,
             ram_enabled: true
         }
     }
