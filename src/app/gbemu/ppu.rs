@@ -214,16 +214,14 @@ impl PPU {
             }
             PPU_MODE_3_DRAW_PIXELS => {
                 if self.mode_3_penalty == 0 {
-                    let tile_map_x = (self.scx >> 3) as u16;
-                    let tile_map_y = ((self.scy as u16) & 0xFFF8) << 2;
-                    let tile_map_index = (self.lcdc_3_bg_tile_map_area + tile_map_x + tile_map_y) as usize;
+                    let tile_map_index = self.lcdc_3_bg_tile_map_area as usize;
                     
                     //TODO: Implement Window fetching
                     //If at the beginning of a scanline, fetch pixels from tile cut off by scx
                     if self.lx == 0 {
                         let tile_offset = self.scx & 0b111;
-                        let tile_map_offset_x = (self.lx >> 3) as usize;
-                        let tile_map_offset_y = ((self.ly as u16 & 0xFFF8) << 2) as usize;
+                        let tile_map_offset_x = (self.scx >> 3) as usize;
+                        let tile_map_offset_y = (((self.ly as u16 + self.scy as u16) & 0xF8) << 2) as usize;
                         let tile_index = self.video_ram[0][tile_map_index + tile_map_offset_x + tile_map_offset_y];
                         let mut pixel_row = self.tile_fetch_bg(tile_index);
 
@@ -282,8 +280,8 @@ impl PPU {
                     }
                     //every 8 pixels (after the initial pixels are pushed), fetch a new tile
                     else if (self.lx + self.scx) & 0b111 == 0 {
-                        let tile_map_offset_x = (self.lx >> 3) as usize;
-                        let tile_map_offset_y = ((self.ly as u16 & 0xFFF8) << 2) as usize;
+                        let tile_map_offset_x = ((self.lx + self.scx) >> 3) as usize;
+                        let tile_map_offset_y = (((self.ly as u16 + self.scy as u16) & 0xF8) << 2) as usize;
                         let tile_index = self.video_ram[0][tile_map_index + tile_map_offset_x + tile_map_offset_y];
                         let pixel_row = self.tile_fetch_bg(tile_index);
                         self.bg_fifo.extend(pixel_row);
@@ -372,7 +370,7 @@ impl PPU {
         }
     }
 
-    fn tile_row_fetch(&self, tile_index: u8, tile_height: u8, y_flip: bool, x_flip: bool, bank: usize, is_obj: bool) -> VecDeque<u8> {
+    fn tile_row_fetch(&self, tile_index: u8, tile_height: u16, y_flip: bool, x_flip: bool, bank: usize, is_obj: bool) -> VecDeque<u8> {
         let mut tile_row = VecDeque::with_capacity(8);
 
         let tile_address = match self.lcdc_4_tile_data_area || is_obj {
@@ -388,8 +386,8 @@ impl PPU {
             false => 14
         };
         let row_offset = match y_flip {
-            true => flip_edge - ((self.ly as u16 - tile_height as u16) << 1),
-            false => (self.ly as u16 - tile_height as u16) << 1
+            true => flip_edge - (tile_height << 1),
+            false => tile_height << 1
         };
         let lsb = self.video_ram[bank][(tile_address + row_offset) as usize];
         let msb = self.video_ram[bank][(tile_address + row_offset) as usize + 1];
@@ -412,7 +410,7 @@ impl PPU {
     }
 
     fn tile_fetch_bg(&self, tile_index: u8) -> VecDeque<Pixel> {
-        let tile_height = (self.ly & 0b11111000) - (self.scy & 0b111);
+        let tile_height = (self.ly as u16 + self.scy as u16) & 0b111;
         //TODO:: Add support for CGB (BG attribute map support)
         let color_row = self.tile_row_fetch(tile_index, tile_height, false, false, 0, false);
         let mut pixel_row = VecDeque::with_capacity(8);
@@ -425,7 +423,7 @@ impl PPU {
     }
 
     fn tile_fetch_obj(&self, oam_index: u16) -> VecDeque<Pixel> {
-        let tile_height = self.object_attribute_memory[oam_index as usize] - 16;
+        let tile_height = self.ly as u16 - (self.object_attribute_memory[oam_index as usize] - 16) as u16;
         let tile_index = self.object_attribute_memory[oam_index as usize + 2];
         let obj_attributes = self.object_attribute_memory[oam_index as usize + 3];
         let y_flip = obj_attributes & 0b1000000 > 0;

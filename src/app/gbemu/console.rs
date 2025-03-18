@@ -611,7 +611,7 @@ impl GBConsole {
                 instruction_size = 0;
                 self.program_counter = u16::from_be_bytes([self.h, self.l]);
             }
-            0o260 => { //LDH A, [a8]
+            0o360 => { //LDH A, [a8]
                 instruction_size = 2;
                 cycle_count = 12;
                 let address = u16::from_be_bytes([0xFF, self.read(self.program_counter + 1)]);
@@ -784,7 +784,7 @@ impl GBConsole {
                             }
                             0o004 | 0o005 => { //INC r8, INC [HL], DEC r8, DEC [HL]
                                 let mut is_hl = false;
-                                let incrementor = if opcode & 007 == 0o004 {1} else {u8::MAX};
+                                let incrementor = if opcode & 0o007 == 0o004 {1} else {u8::MAX};
                                 let register = match opcode & 0o070 {
                                     0o000 => &mut self.b,
                                     0o010 => &mut self.c,
@@ -904,7 +904,7 @@ impl GBConsole {
                         }
                     }
                 
-                    0o200 => { //Blok 2
+                    0o200 => { //Block 2
                         let operand = match opcode & 0o007 {
                             0o000 => self.b,
                             0o001 => self.c,
