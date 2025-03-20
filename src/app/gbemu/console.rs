@@ -957,12 +957,16 @@ impl GBConsole {
                                 self.a += operand;
                                 if self.flags & C_CARRY_FLAG > 0 {
                                     self.a += 1;
+                                    self.flag_toggle((temp_a & 0x0F) >= (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                    self.flag_toggle(temp_a >= self.a, C_CARRY_FLAG);
+                                }
+                                else {
+                                    self.flag_toggle((temp_a & 0x0F) > (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                    self.flag_toggle(temp_a > self.a, C_CARRY_FLAG);
                                 }
 
                                 self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
                                 self.flag_toggle(false, N_SUBTRACTION_FLAG);
-                                self.flag_toggle((temp_a & 0x0F) > (self.a & 0x0F), H_HALF_CARRY_FLAG);
-                                self.flag_toggle(temp_a > self.a, C_CARRY_FLAG);
                             }
                             0o020 => { //SUB A, r8 | SUB A, [HL]
                                 let temp_a = self.a;
@@ -978,12 +982,16 @@ impl GBConsole {
                                 self.a -= operand;
                                 if self.flags & C_CARRY_FLAG > 0 {
                                     self.a -= 1;
+                                    self.flag_toggle((temp_a & 0x0F) <= (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                    self.flag_toggle(temp_a <= self.a, C_CARRY_FLAG);
+                                }
+                                else {
+                                    self.flag_toggle((temp_a & 0x0F) < (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                    self.flag_toggle(temp_a < self.a, C_CARRY_FLAG);
                                 }
 
                                 self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
                                 self.flag_toggle(true, N_SUBTRACTION_FLAG);
-                                self.flag_toggle((temp_a & 0x0F) < (self.a & 0x0F), H_HALF_CARRY_FLAG);
-                                self.flag_toggle(temp_a < self.a, C_CARRY_FLAG);
                             }
                             0o040 => { //AND A, r8 | AND A [HL]
                                 self.a &= operand;
@@ -1143,12 +1151,17 @@ impl GBConsole {
                                         self.a += operand;
                                         if self.flags & C_CARRY_FLAG > 0 {
                                             self.a += 1;
+                                            self.flag_toggle((temp_a & 0x0F) >= (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                            self.flag_toggle(temp_a >= self.a, C_CARRY_FLAG);
+                                        }
+                                        else {
+                                            self.flag_toggle((temp_a & 0x0F) > (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                            self.flag_toggle(temp_a > self.a, C_CARRY_FLAG);
                                         }
                                     
                                         self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
                                         self.flag_toggle(false, N_SUBTRACTION_FLAG);
-                                        self.flag_toggle((temp_a & 0x0F) > (self.a & 0x0F), H_HALF_CARRY_FLAG);
-                                        self.flag_toggle(temp_a > self.a, C_CARRY_FLAG);
+                                        
                                     }
                                     0o020 => { //SUB A, n8
                                         let temp_a = self.a;
@@ -1164,12 +1177,16 @@ impl GBConsole {
                                         self.a -= operand;
                                         if self.flags & C_CARRY_FLAG > 0 {
                                             self.a -= 1;
+                                            self.flag_toggle((temp_a & 0x0F) <= (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                            self.flag_toggle(temp_a <= self.a, C_CARRY_FLAG);
+                                        }
+                                        else {
+                                            self.flag_toggle((temp_a & 0x0F) < (self.a & 0x0F), H_HALF_CARRY_FLAG);
+                                            self.flag_toggle(temp_a < self.a, C_CARRY_FLAG);
                                         }
                                     
                                         self.flag_toggle(self.a == 0, Z_ZERO_FLAG);
                                         self.flag_toggle(true, N_SUBTRACTION_FLAG);
-                                        self.flag_toggle((temp_a & 0x0F) < (self.a & 0x0F), H_HALF_CARRY_FLAG);
-                                        self.flag_toggle(temp_a < self.a, C_CARRY_FLAG);
                                     }
                                     0o040 => { //AND A, n8
                                         self.a &= operand;
