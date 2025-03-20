@@ -94,7 +94,7 @@ impl GBEmu {
         '_Frame: loop {
             for _scanline in 0..154 {
                 for dot in 0..456 {
-                    if cpu_delay == 0 {
+                    if cpu_delay == 0 && !console.is_halted {
                         let interrupt_to_be_enabled = console.interrupt_master_enable_flag == console::IMEState::Pending;
                         cpu_delay = console.execute_instruction();
                         if interrupt_to_be_enabled && console.interrupt_master_enable_flag == console::IMEState::Pending {

@@ -52,6 +52,9 @@ pub struct GBConsole {
     dma: u8,
     dma_counter: u16,
 
+    //Misc variables
+    pub is_halted: bool,
+
     //External objects
     ppu: PPU
 }
@@ -112,6 +115,7 @@ impl GBConsole {
             dmg_obj_pallette_1: 0x00,
             dma: 0xFF,
             dma_counter: 0xA0 << 2,
+            is_halted: false,
             ppu: ppu::PPU::new(),
         }
     }
@@ -336,6 +340,10 @@ impl GBConsole {
     }
 
     pub fn handle_interrupt(&mut self) -> u8 {
+        if self.is_halted && self.interrupt_flag & 0b00011111 > 0 {
+            self.is_halted = false;
+        }
+
         if self.interrupt_master_enable_flag == IMEState::Enabled {
             let mut bit_to_check = 0b1;
 
@@ -461,7 +469,9 @@ impl GBConsole {
 
         let opcode = self.read(self.program_counter);
 
-        self.debug_message(opcode);
+        if false {
+           self.debug_message(opcode);
+        }
         
         match opcode {
             //Block 0 one-offs
@@ -553,6 +563,12 @@ impl GBConsole {
             //Block 1 one-offs
             0o166 => {
                 //TODO: Implement HALT instruction
+                if self.interrupt_master_enable_flag == IMEState::Enabled {
+                    self.is_halted = true;
+                }
+                else if self.interrupt_flag & 0b00011111 == 0{
+                    self.is_halted = true;
+                }
             }
 
             //Block 3 one-offs
