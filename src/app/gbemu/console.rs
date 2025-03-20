@@ -359,8 +359,10 @@ impl GBConsole {
 
             self.stack_pointer -= 2;
             self.write_16(self.stack_pointer, self.program_counter);
-            self.program_counter = self.read_16(interrupt_vector);
+            //self.program_counter = self.read_16(interrupt_vector);
+            self.program_counter = interrupt_vector;
             self.interrupt_master_enable_flag = IMEState::Disabled;
+            self.interrupt_flag &= 0xFF ^ bit_to_check;
             return 20;
         }
 
@@ -458,6 +460,8 @@ impl GBConsole {
         let mut cycle_count = 4;
 
         let opcode = self.read(self.program_counter);
+
+        self.debug_message(opcode);
         
         match opcode {
             //Block 0 one-offs
@@ -514,10 +518,10 @@ impl GBConsole {
             0o047 => { //DAA
                 if self.flags & N_SUBTRACTION_FLAG > 0 {
                     if self.flags & H_HALF_CARRY_FLAG > 0 {
-                        self.a += 0x6;
+                        self.a -= 0x6;
                     }
                     if self.flags & C_CARRY_FLAG > 0 {
-                        self.a += 0x60;
+                        self.a -= 0x60;
                     }
                 }
                 else {
@@ -564,6 +568,7 @@ impl GBConsole {
                 self.stack_pointer += 2;
             }
             0o313 => { //PREFIX
+                instruction_size = 2;
                 cycle_count = self.execute_prefixed_instruction();
             }
             0o315 => { //CALL
@@ -678,6 +683,7 @@ impl GBConsole {
                                     else {
                                         instruction_size = u16::from_be_bytes([0, jump_offset_u8]);
                                     }
+                                    instruction_size += 2;
                                 }
                                 else {
                                     instruction_size = 2;
@@ -1030,6 +1036,7 @@ impl GBConsole {
                                 };
 
                                 (*register_high, *register_low) = u16::to_be_bytes(popped_value).into();
+                                self.flags &= 0xF0;
                             }
                             0o002 if opcode & 0o070 >= 0o040 => { //LDH [C], A | LD [a16], A | LDH A, [C] | LD A, [a16]
                                 let address;
@@ -1191,12 +1198,13 @@ impl GBConsole {
                                     _ => panic!("ERROR: Vector octet out of bounds!")
                                 };
                                 
-                                let return_address = self.read_16(self.program_counter + 1);
+                                let return_address = self.program_counter + 1;
                                 self.stack_pointer -= 2;
                                 self.write_16(self.stack_pointer, return_address);
 
                                 instruction_size = 0;
-                                self.program_counter = self.read_16(jump_address_vector);
+                                //self.program_counter = self.read_16(jump_address_vector);
+                                self.program_counter = jump_address_vector;
                             }
                             _ => panic!("ERROR: Column octet out of bounds!")
                         }
@@ -1522,6 +1530,331 @@ impl GBConsole {
         }
 
         cycle_count
+    }
+
+    fn debug_message(&self, opcode: u8) {
+        let instruction = match opcode {
+            0o000 => format!("NOP"),
+            0o010 => format!("LD [{:x}], SP", self.read_16(self.program_counter + 1)),
+            0o020 => format!("STOP ${:x}", self.read(self.program_counter + 1)),
+
+            0o007 => format!("RLCA"),
+            0o017 => format!("RRCA"),
+            0o027 => format!("RLA"),
+            0o037 => format!("RRA"),
+
+            0o047 => format!("DAA"),
+            0o057 => format!("CPL"),
+            0o067 => format!("SCF"),
+            0o077 => format!("CCF"),
+
+            0o166 => format!("HALT"),
+
+            0o340 => format!("LDH [{:x}], A", self.read(self.program_counter + 1)),
+            0o350 => format!("ADD SP, {}", self.read(self.program_counter + 1) as i8),
+            0o360 => format!("LDH A, [{:x}]", self.read(self.program_counter + 1)),
+            0o370 => format!("LD HL, SP + {}", self.read(self.program_counter + 1) as i8),
+
+            0o311 => format!("RET"),
+            0o331 => format!("RETI"),
+            0o351 => format!("JP HL"),
+            0o371 => format!("LD SP, HL"),
+
+            0o303 => format!("JP ${:x}", self.read_16(self.program_counter + 1)),
+            0o313 => debug_message_prefixed(self.read(self.program_counter + 1)),
+            0o363 => format!("DI"),
+            0o373 => format!("EI"),
+            
+            0o315 => format!("CALL ${:x}", self.read_16(self.program_counter + 1)),
+
+            0o323 | 0o333 | 0o335 | 0o343 | 0o344 | 0o353 | 0o354 | 0o355 | 0o364 | 0o374 | 0o375 => format!("ILLEGAL OPCODE ${:x}", opcode),
+
+            _ => match opcode & 0o300 {
+                0o000 => {
+                    match opcode & 0o007 {
+                        0o000 => {
+                            let condition = match opcode & 0o070 {
+                                0o030 => "",
+                                0o040 => "NZ",
+                                0o050 => "Z",
+                                0o060 => "NC",
+                                0o070 => "C",
+                                _ => panic!()
+                            };
+                            let jump_pointer = self.read(self.program_counter + 1);
+                            format!("JR {}, {:+}", condition, jump_pointer as i8)
+                        }
+                        0o001 => {
+                            let register = match opcode & 0o060 {
+                                0o000 => "BC",
+                                0o020 => "DE",
+                                0o040 => "HL",
+                                0o060 => "SP",
+                                _ => panic!()
+                            };
+
+                            if opcode & 0o010 == 0 {
+                                format!("LD {}, ${:x}", register, self.read_16(self.program_counter + 1))
+                            }
+                            else {
+                                format!("ADD HL, {}", register)
+                            }
+                        }
+                        0o002 => {
+                            let register = match opcode & 0o060 {
+                                0o000 => "BC",
+                                0o020 => "DE",
+                                0o040 => "HL+",
+                                0o060 => "HL-",
+                                _ => panic!()
+                            };
+
+                            if opcode & 0o010 == 0 {
+                                format!("LD [{}], A", register)
+                            }
+                            else {
+                                format!("LD A, [{}]", register)
+                            }
+                        }
+                        0o003 => {
+                            let register = match opcode & 0o060 {
+                                0o000 => "BC",
+                                0o020 => "DE",
+                                0o040 => "HL",
+                                0o060 => "SP",
+                                _ => panic!()
+                            };
+
+                            if opcode & 0o010 == 0 {
+                                format!("INC {}", register)
+                            }
+                            else {
+                                format!("DEC {}", register)
+                            }
+                        }
+                        0o004 | 0o005 => {
+                            let register = match opcode & 0o070 {
+                                0o000 => "B",
+                                0o010 => "C",
+                                0o020 => "D",
+                                0o030 => "E",
+                                0o040 => "H",
+                                0o050 => "L",
+                                0o060 => "[HL]",
+                                0o070 => "A",
+                                _ => panic!()
+                            };
+
+                            if opcode & 0o007 == 0o004 {
+                                format!("INC {}", register)
+                            }
+                            else {
+                                format!("DEC {}", register)
+                            }
+                        }
+                        0o006 => {
+                            let register = match opcode & 0o070 {
+                                0o000 => "B",
+                                0o010 => "C",
+                                0o020 => "D",
+                                0o030 => "E",
+                                0o040 => "H",
+                                0o050 => "L",
+                                0o060 => "[HL]",
+                                0o070 => "A",
+                                _ => panic!()
+                            };
+                            format!("LD {}, ${:x}", register, self.read(self.program_counter + 1))
+                        }
+                        _ => panic!()
+                    }
+                }
+                0o100 => {
+                    let src = match opcode & 0o007 {
+                        0o000 => "B",
+                        0o001 => "C",
+                        0o002 => "D",
+                        0o003 => "E",
+                        0o004 => "H",
+                        0o005 => "L",
+                        0o006 => "[HL]",
+                        0o007 => "A",
+                        _ => panic!()
+                    };
+                    let dest = match opcode & 0o070 {
+                        0o000 => "B",
+                        0o010 => "C",
+                        0o020 => "D",
+                        0o030 => "E",
+                        0o040 => "H",
+                        0o050 => "L",
+                        0o060 => "[HL]",
+                        0o070 => "A",
+                        _ => panic!()
+                    };
+                    format!("LD {}, {}", dest, src)
+                }
+                0o200 => {
+                    let src = match opcode & 0o007 {
+                        0o000 => "B",
+                        0o001 => "C",
+                        0o002 => "D",
+                        0o003 => "E",
+                        0o004 => "H",
+                        0o005 => "L",
+                        0o006 => "[HL]",
+                        0o007 => "A",
+                        _ => panic!()
+                    };
+                    let op = match opcode & 0o070 {
+                        0o000 => "ADD",
+                        0o010 => "ADC",
+                        0o020 => "SUB",
+                        0o030 => "SBC",
+                        0o040 => "AND",
+                        0o050 => "XOR",
+                        0o060 => "OR",
+                        0o070 => "CP",
+                        _ => panic!()
+                    };
+                    format!("{} A, {}", op, src)
+                }
+                0o300 => {
+                    match opcode & 0o007 {
+                        0o000 => {
+                            let condition = match opcode & 0o070 {
+                                0o000 => "NZ",
+                                0o010 => "Z",
+                                0o020 => "NC",
+                                0o030 => "C",
+                                _ => panic!()
+                            };
+                            format!("RET {}", condition)
+                        }
+                        0o001 => {
+                            let register = match opcode & 0o070 {
+                                0o000 => "BC",
+                                0o020 => "DE",
+                                0o040 => "HL",
+                                0o060 => "AF",
+                                _ => panic!()
+                            };
+                            format!("POP {}", register)
+                        }
+                        0o002 if opcode & 0o040 == 0 => {
+                            let condition = match opcode & 0o070 {
+                                0o000 => "NZ",
+                                0o010 => "Z",
+                                0o020 => "NC",
+                                0o030 => "C",
+                                _ => panic!()
+                            };
+                            format!("JP {}, ${:x}", condition, self.read_16(self.program_counter + 1))
+                        }
+                        0o002 => {
+                            let (op, register) = if opcode & 0o010 == 0 {("LDH", format!("C"))} else {("LD", format!("{:x}", self.read_16(self.program_counter + 1)))};
+                            if opcode & 0o020 == 0 {
+                                format!("{} [{}], A", op, register)
+                            }
+                            else {
+                                format!("{} A, [{}]", op, register)
+                            }
+                        }
+                        0o004 => {
+                            let condition = match opcode & 0o070 {
+                                0o000 => "NZ",
+                                0o010 => "Z",
+                                0o020 => "NC",
+                                0o030 => "C",
+                                _ => panic!()
+                            };
+                            format!("CALL {}, ${:x}", condition, self.read_16(self.program_counter + 1))
+                        }
+                        0o005 => {
+                            let register = match opcode & 0o070 {
+                                0o000 => "BC",
+                                0o020 => "DE",
+                                0o040 => "HL",
+                                0o060 => "AF",
+                                _ => panic!()
+                            };
+                            format!("PUSH {}", register)
+                        }
+                        0o006 => {
+                            let op = match opcode & 0o070 {
+                                0o000 => "ADD",
+                                0o010 => "ADC",
+                                0o020 => "SUB",
+                                0o030 => "SBC",
+                                0o040 => "AND",
+                                0o050 => "XOR",
+                                0o060 => "OR",
+                                0o070 => "CP",
+                                _ => panic!()
+                            };
+                            format!("{} A, ${:x}", op, self.read(self.program_counter + 1))
+                        }
+                        0o007 => {
+                            let vector = match opcode & 0o070 {
+                                0o000 => "00",
+                                0o010 => "08",
+                                0o020 => "10",
+                                0o030 => "18",
+                                0o040 => "20",
+                                0o050 => "28",
+                                0o060 => "30",
+                                0o070 => "38",
+                                _ => panic!()
+                            };
+                            format!("RST ${}", vector)
+                        }
+                        _ => panic!("Unknown opcode {:o}", opcode)
+                    }
+                }
+                _ => format!("ERROR: Invalid opcode!")
+            }
+        };
+
+        println!("{:x}: {}", self.program_counter, instruction);
+    }
+}
+
+fn debug_message_prefixed(opcode: u8) -> String {
+    let register = match opcode & 0o007 {
+        0o000 => "B",
+        0o001 => "C",
+        0o002 => "D",
+        0o003 => "E",
+        0o004 => "H",
+        0o005 => "L",
+        0o006 => "[HL]",
+        0o007 => "A",
+        _ => panic!()
+    };
+    
+    if opcode & 0o300 == 0 {
+        let op = match opcode & 0o070 {
+            0o000 => "RLC",
+            0o010 => "RRC",
+            0o020 => "RL",
+            0o030 => "RR",
+            0o040 => "SLA",
+            0o050 => "SRA",
+            0o060 => "SWAP",
+            0o070 => "SRL",
+            _ => panic!()
+        };
+        format!("{} {}", op, register)
+    }
+    else {
+        let op = match opcode & 0o300 {
+            0o100 => "BIT",
+            0o200 => "RES",
+            0o300 => "SET",
+            _ => panic!()
+        };
+        let bit = (opcode & 0o070) >> 3;
+        format!("{} {}, {}", op, bit, register)
     }
 }
 
