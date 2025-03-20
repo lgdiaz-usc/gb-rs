@@ -624,7 +624,7 @@ impl GBConsole {
                 self.stack_pointer += offset;
 
                 let carry_check = self.stack_pointer.to_be_bytes()[1];
-                self.flag_toggle((carry_check & 0xF0) < (offset_lsb & 0xFF), H_HALF_CARRY_FLAG);
+                self.flag_toggle((carry_check & 0x0F) < (offset_lsb & 0x0F), H_HALF_CARRY_FLAG);
                 self.flag_toggle(carry_check < offset_lsb, C_CARRY_FLAG);
                 self.flag_toggle(false, Z_ZERO_FLAG | N_SUBTRACTION_FLAG);
             }
@@ -659,7 +659,7 @@ impl GBConsole {
                 (self.h, self.l) = new_pointer.to_be_bytes().into();
 
                 let carry_check = new_pointer.to_be_bytes()[1];
-                self.flag_toggle((carry_check & 0xF0) < (offset_lsb & 0xFF), H_HALF_CARRY_FLAG);
+                self.flag_toggle((carry_check & 0x0F) < (offset_lsb & 0x0F), H_HALF_CARRY_FLAG);
                 self.flag_toggle(carry_check < offset_lsb, C_CARRY_FLAG);
                 self.flag_toggle(false, Z_ZERO_FLAG | N_SUBTRACTION_FLAG);
             }
