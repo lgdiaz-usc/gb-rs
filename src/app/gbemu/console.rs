@@ -658,7 +658,7 @@ impl GBConsole {
                 let new_pointer = self.stack_pointer + offset;
                 (self.h, self.l) = new_pointer.to_be_bytes().into();
 
-                let carry_check = new_pointer.to_be_bytes()[1];
+                let carry_check = self.l;
                 self.flag_toggle((carry_check & 0x0F) < (offset_lsb & 0x0F), H_HALF_CARRY_FLAG);
                 self.flag_toggle(carry_check < offset_lsb, C_CARRY_FLAG);
                 self.flag_toggle(false, Z_ZERO_FLAG | N_SUBTRACTION_FLAG);
@@ -838,7 +838,7 @@ impl GBConsole {
                                     register_after = value;
                                 }
                                 self.flag_toggle(register_after == 0, Z_ZERO_FLAG);
-                                self.flag_toggle(incrementor == 1, N_SUBTRACTION_FLAG);
+                                self.flag_toggle(incrementor != 1, N_SUBTRACTION_FLAG);
                             
                                 let half_carry_condition = if incrementor == 1 {
                                     (register_before & 0b1111 > 0) && (register_after & 0b1111 == 0)
@@ -1345,25 +1345,27 @@ impl GBConsole {
                         let carry_condition;
 
                         if !is_hl {
-                            zero_condition = *operand == 0;
                             carry_condition = *operand & 0x80 > 0;
 
                             *operand <<= 1;
                             if self.flags & C_CARRY_FLAG > 0 {
                                 *operand += 1;
                             }
+
+                            zero_condition = *operand == 0;
                         }
                         else {
                             let address = u16::from_be_bytes([self.h, self.l]);
                             let mut value = self.read(address);
 
-                            zero_condition = value == 0;
                             carry_condition = value & 0x80 > 0;
 
                             value <<= 1;
                             if self.flags & C_CARRY_FLAG > 0 {
                                 value += 1;
                             }
+
+                            zero_condition = value == 0;
 
                             self.write(address, value);
                         }
@@ -1377,25 +1379,27 @@ impl GBConsole {
                         let carry_condition;
     
                         if !is_hl {
-                            zero_condition = *operand == 0;
                             carry_condition = *operand & 0x01 > 0;
     
                             *operand >>= 1;
                             if self.flags & C_CARRY_FLAG > 0 {
                                 *operand += 0x80;
                             }
+
+                            zero_condition = *operand == 0;
                         }
                         else {
                             let address = u16::from_be_bytes([self.h, self.l]);
                             let mut value = self.read(address);
     
-                            zero_condition = value == 0;
                             carry_condition = value & 0x01 > 0;
     
                             value >>= 1;
                             if self.flags & C_CARRY_FLAG > 0 {
                                 value += 0x80;
                             }
+
+                            zero_condition = value == 0;
     
                             self.write(address, value);
                         }
@@ -1409,19 +1413,21 @@ impl GBConsole {
                         let carry_condition;
 
                         if !is_hl {
-                            zero_condition = *operand == 0;
                             carry_condition = *operand & 0x80 > 0;
 
                             *operand <<= 1;
+
+                            zero_condition = *operand == 0;
                         }
                         else {
                             let address = u16::from_be_bytes([self.h, self.l]);
                             let mut value = self.read(address);
 
-                            zero_condition = value == 0;
                             carry_condition = value & 0x80 > 0;
 
                             value <<= 1;
+
+                            zero_condition = value == 0;
 
                             self.write(address, value);
                         }
@@ -1435,23 +1441,25 @@ impl GBConsole {
                         let carry_condition;
     
                         if !is_hl {
-                            zero_condition = *operand == 0;
                             carry_condition = *operand & 0x01 > 0;
     
                             let kept_bit = *operand & 0x80;
                             *operand >>= 1;
                             *operand |= kept_bit;
+
+                            zero_condition = *operand == 0;
                         }
                         else {
                             let address = u16::from_be_bytes([self.h, self.l]);
                             let mut value = self.read(address);
     
-                            zero_condition = value == 0;
                             carry_condition = value & 0x01 > 0;
     
                             let kept_bit = value & 0x80;
                             value >>= 1;
                             value |= kept_bit;
+
+                            zero_condition = value == 0;
     
                             self.write(address, value);
                         }
@@ -1491,19 +1499,21 @@ impl GBConsole {
                         let carry_condition;
     
                         if !is_hl {
-                            zero_condition = *operand == 0;
                             carry_condition = *operand & 0x01 > 0;
     
                             *operand >>= 1;
+
+                            zero_condition = *operand == 0;
                         }
                         else {
                             let address = u16::from_be_bytes([self.h, self.l]);
                             let mut value = self.read(address);
     
-                            zero_condition = value == 0;
                             carry_condition = value & 0x01 > 0;
     
                             value >>= 1;
+
+                            zero_condition = value == 0;
     
                             self.write(address, value);
                         }
