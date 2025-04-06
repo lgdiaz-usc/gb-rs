@@ -37,7 +37,7 @@ pub struct GBConsole {
     serial_counter: u8, //Counts down from 8 per cycle.
 
     //Timing registers
-    timer_divider: u16, //DIV
+    system_counter: u16, //DIV
     timer_counter: u8, //TIMA
     timer_modulo: u8, //TMA
     timer_control: u8, //TAC
@@ -105,7 +105,7 @@ impl GBConsole {
             serial_byte: 0x00,
             serial_control: 0x7E,
             serial_counter: 0,
-            timer_divider: 0xAB << 6,
+            system_counter: 0xAB << 6,
             timer_counter: 0x00,
             timer_modulo: 0x00,
             timer_control: 0xF8,
@@ -170,7 +170,7 @@ impl GBConsole {
                 0xFF00 => 0, //P1/JOYP
                 0xFF01 => self.serial_byte, //SB
                 0xFF02 => self.serial_control, //SC
-                0xFF04 => (self.timer_divider >> 6).to_be_bytes()[1], //DIV
+                0xFF04 => (self.system_counter >> 6).to_be_bytes()[1], //DIV
                 0xFF05 => self.timer_counter, //TIMA
                 0xFF06 => self.timer_modulo, //TMA
                 0xFF07 => self.timer_control, //TAC
@@ -275,11 +275,18 @@ impl GBConsole {
                     &mut self.serial_control
                 }
                 0xFF04 => { //DIV
-                    self.timer_divider = 0;
+                    let system_counter_before = self.system_counter;
+                    self.system_counter = 0;
+                    self.timer_tick(system_counter_before, self.timer_control);
                     return;                }
                 0xFF05 => &mut self.timer_counter, //TIMA
                 0xFF06 => &mut self.timer_modulo, //TMA
-                0xFF07 => &mut self.timer_control, //TAC
+                0xFF07 => { //TAC
+                   let timer_control_before = self.timer_control;
+                   self.timer_control = value;
+                   self.timer_tick(self.system_counter, timer_control_before);
+                   return;
+                },
                 0xFF0f => &mut self.interrupt_flag, //IF
                 0xFF46 => { //DMA transfer address. Also starts the DMA transfer process be resetting the dma_counter
                     self.dma_counter = 0;
@@ -438,27 +445,37 @@ impl GBConsole {
             self.timer_overflowed = false;
         }
 
-        self.timer_divider += 1;
+        let system_counter_before = self.system_counter;
+        self.system_counter += 1;
 
-        if self.timer_control & 0b100 > 0 {
-            let increment_every = match self.timer_control & 0b11 {
-                0b00 => 0xFF,
-                0b01 => 0x04,
-                0b10 => 0x0F,
-                0b11 => 0x3F,
-                _ => panic!("ERROR: Increment value out of bounds!")
-            };
+        self.timer_tick(system_counter_before, self.timer_control);
+    }
 
-            if self.timer_divider & increment_every == 0 {
-                self.timer_counter += 1;
+    fn timer_tick(&mut self, system_counter_before: u16, timer_control_before: u8) {
+        const TAC_FREQUENCIES: [u16; 4] = [0x80, 0x02, 0x08, 0x20];
+        let bit_to_check_before = TAC_FREQUENCIES[(timer_control_before & 0b11) as usize];
+        let bit_to_check_after = TAC_FREQUENCIES[(self.timer_control & 0b11) as usize];
 
-                if self.timer_counter == 0 {
-                    self.timer_overflowed = true;
-                }
+        let will_update;
+        //if dmg
+        {
+            let state_before = (system_counter_before & bit_to_check_before != 0)
+                                     && (timer_control_before & 0b100 != 0);
+            let state_after = (self.system_counter & bit_to_check_after != 0)
+                                    && (self.timer_control & 0b100 != 0);
+            will_update = state_before && !state_after;
+        }
+        //TODO turn above into an if statement and add else clause for CGB behavior
+
+        if will_update {
+            self.timer_counter += 1;
+
+            if self.timer_counter == 0 {
+                self.timer_overflowed = true;
             }
         }
     }
-
+    
     pub fn dump_screen(&self) -> &[[Pixel; 160]; 144] {
         self.ppu.dump_screen()
     }
