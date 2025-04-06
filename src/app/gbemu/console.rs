@@ -347,7 +347,7 @@ impl GBConsole {
     }
 
     pub fn handle_interrupt(&mut self) -> u8 {
-        if self.is_halted && self.interrupt_flag & 0b00011111 > 0 {
+        if self.is_halted && self.interrupt_master_enable_flag != IMEState::Enabled && self.interrupt_flag & 0b00011111 > 0 {
             self.is_halted = false;
         }
 
@@ -378,7 +378,8 @@ impl GBConsole {
             self.program_counter = interrupt_vector;
             self.interrupt_master_enable_flag = IMEState::Disabled;
             self.interrupt_flag &= 0xFF ^ bit_to_check;
-            return 20;
+            self.is_halted = false;
+            return 5;
         }
 
         0
@@ -1590,6 +1591,185 @@ impl GBConsole {
         }
 
         cycle_count
+    }
+
+    pub fn get_instruction_delay(&self) -> u8 {
+        let opcode = self.read(self.program_counter);
+
+        match opcode {
+            //One-offs
+            //Block 0
+            0o000 | 0o020 => 1,
+            0o010 => 5,
+            
+            //Block 1
+            0o166 => 1,
+
+            //Block 3
+            0o340 | 0o360 | 0o370 => 3,
+            0o350 => 4,
+            0o311 | 0o331 => 4,
+            0o361 => 1,
+            0o371 => 2,
+            0o303 => 4,
+            0o313 => {
+                let prefixed_opcode = self.read(self.program_counter + 1);
+                if prefixed_opcode & 0o007 == 0o006 {
+                    if prefixed_opcode & 0o300 == 0o100 {
+                        3
+                    }
+                    else {
+                        4
+                    }
+                }
+                else {
+                    2
+                }
+            }
+            0o363 | 0o373 => 1,
+            0o315 => 6,
+
+            //Invalid opcodes
+            0o323 | 0o333 | 0o335 | 0o343 | 0o344 | 0o353 | 0o354 | 0o355 | 0o364 | 0o374 | 0o375 => panic!("ERROR: Invalid opcode!"),
+
+            _ => {
+                match opcode & 0o300 {
+                    0o000 => {
+                        match opcode & 0o007 {
+                            0o000 => {
+                                let jump_condition = match opcode & 0o070 {
+                                    0o030 => true,
+                                    0o040 => self.flags & Z_ZERO_FLAG == 0,
+                                    0o050 => self.flags & Z_ZERO_FLAG > 0,
+                                    0o060 => self.flags & C_CARRY_FLAG == 0,
+                                    0o070 => self.flags & C_CARRY_FLAG > 0,
+                                    _ => panic!("ERROR: Invalid condition octet")
+                                };
+
+                                if jump_condition {
+                                    3
+                                }
+                                else {
+                                    2
+                                }
+                            }
+                            0o001 => {
+                                if opcode & 0o010 == 0 {
+                                    3
+                                }
+                                else {
+                                    2
+                                }
+                            }
+                            0o002 | 0o003 => 2,
+                            0o004 | 0o005 => {
+                                if opcode & 0o070 == 0o060 {
+                                    3
+                                }
+                                else {
+                                    1
+                                }
+                            }
+                            0o006 => {
+                                if opcode & 0o070 == 0o060 {
+                                    3
+                                }
+                                else {
+                                    2
+                                }
+                            }
+                            0o007 => 1,
+                            _ => panic!("ERROR: invalid Column octet")
+                        }
+                    }
+                    0o100 => {
+                        if opcode & 0o070 == 0o060 || opcode & 0o007 == 0o006 {
+                            2
+                        }
+                        else {
+                            1
+                        }
+                    }
+                    0o200 => {
+                        if opcode & 0o007 == 0o006 {
+                            2
+                        }
+                        else {
+                            1
+                        }
+                    }
+                    0o300 => {
+                        match opcode & 0o007 {
+                            0o000 => {
+                                let jump_condition = match opcode & 0o070 {
+                                    0o000 => self.flags & Z_ZERO_FLAG == 0,
+                                    0o010 => self.flags & Z_ZERO_FLAG > 0,
+                                    0o020 => self.flags & C_CARRY_FLAG == 0,
+                                    0o030 => self.flags & C_CARRY_FLAG > 0,
+                                    _ => panic!("Error: Invalid condition opcode")
+                                };
+
+                                if jump_condition {
+                                    5
+                                }
+                                else {
+                                    2
+                                }
+                            }
+                            0o001 => 3,
+                            0o002 => {
+                                if opcode & 0o040 == 0 {
+                                    let jump_condition = match opcode & 0o070 {
+                                        0o000 => self.flags & Z_ZERO_FLAG == 0,
+                                        0o010 => self.flags & Z_ZERO_FLAG > 0,
+                                        0o020 => self.flags & C_CARRY_FLAG == 0,
+                                        0o030 => self.flags & C_CARRY_FLAG > 0,
+                                        _ => panic!("Error: Invalid condition opcode")
+                                    };
+    
+                                    if jump_condition {
+                                        4
+                                    }
+                                    else {
+                                        3
+                                    }
+                                }
+                                else {
+                                    if opcode & 0o010 == 0 {
+                                        2
+                                    }
+                                    else {
+                                        4
+                                    }
+                                }
+                            }
+                            0o004 => {
+                                let jump_condition = match opcode & 0o070 {
+                                    0o000 => self.flags & Z_ZERO_FLAG == 0,
+                                    0o010 => self.flags & Z_ZERO_FLAG > 0,
+                                    0o020 => self.flags & C_CARRY_FLAG == 0,
+                                    0o030 => self.flags & C_CARRY_FLAG > 0,
+                                    _ => panic!("Error: Invalid condition opcode")
+                                };
+
+                                if jump_condition {
+                                    6
+                                }
+                                else {
+                                    3
+                                }
+                            }
+                            0o005 => 4,
+                            0o006 => 2,
+                            0o007 => 4,
+                            _ => panic!("Error: Invalid column octet")
+                        }
+                    }
+                    _ => panic!("ERROR: Unrecognized opcode block")
+                }
+            }
+        }
+
     }
 
     fn debug_message(&self, opcode: u8) {

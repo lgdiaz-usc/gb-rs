@@ -94,16 +94,32 @@ impl GBEmu {
         '_Frame: loop {
             for _scanline in 0..154 {
                 for dot in 0..456 {
-                    if cpu_delay == 0 && !console.is_halted {
+                    /*if cpu_delay == 0 && !console.is_halted {
                         let interrupt_to_be_enabled = console.interrupt_master_enable_flag == console::IMEState::Pending;
                         cpu_delay = console.execute_instruction();
                         if interrupt_to_be_enabled && console.interrupt_master_enable_flag == console::IMEState::Pending {
                             console.interrupt_master_enable_flag = console::IMEState::Enabled
                         }
                     }
-                    cpu_delay -= 1;
+                    cpu_delay -= 1;*/
 
                     if dot & 0b11 == 0 {
+                        if cpu_delay == 255 {
+                            cpu_delay = console.handle_interrupt();
+                            if !console.is_halted {
+                                cpu_delay += console.get_instruction_delay();
+                            }
+                        }
+                        cpu_delay -= 1;
+
+                        if cpu_delay == 0 {
+                            let interrupt_to_be_enabled = console.interrupt_master_enable_flag == console::IMEState::Pending;
+                            console.execute_instruction();
+                            if interrupt_to_be_enabled && console.interrupt_master_enable_flag == console::IMEState::Pending {
+                                console.interrupt_master_enable_flag = console::IMEState::Enabled
+                            }
+                        }
+
                         console.update_timer();
                     }
 
@@ -112,7 +128,7 @@ impl GBEmu {
                         console_output.push((serial_output as char).to_ascii_uppercase());
                     }
 
-                    cpu_delay += console.handle_interrupt();
+                    //cpu_delay += console.handle_interrupt();
                 }
             }
 
