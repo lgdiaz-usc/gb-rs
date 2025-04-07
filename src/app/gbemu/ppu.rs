@@ -233,15 +233,20 @@ impl PPU {
                     //If at the beginning of a scanline, fetch pixels from tile cut off by scx
                     if self.lx == 0 {
                         let tile_offset = self.scx & 0b111;
-                        let tile_map_offset_x = (self.scx >> 3) as usize;
-                        let tile_map_offset_y = (((self.ly as u16 + self.scy as u16) & 0xF8) << 2) as usize;
-                        let tile_index = self.video_ram[0][bg_tile_map_index + tile_map_offset_x + tile_map_offset_y];
-                        let mut pixel_row = self.tile_fetch_bg(tile_index);
+                        if self.lcdc_0_bg_window_enable{
+                            self.is_window_fetching_mode = self.lcdc_5_window_enabled && self.ly_eq_wy && (self.lx + 7) >= self.wx;
+                            if !self.is_window_fetching_mode {
+                                let tile_map_offset_x = (self.scx >> 3) as usize;
+                                let tile_map_offset_y = (((self.ly as u16 + self.scy as u16) & 0xF8) << 2) as usize;
+                                let tile_index = self.video_ram[0][bg_tile_map_index + tile_map_offset_x + tile_map_offset_y];
+                                let mut pixel_row = self.tile_fetch_bg(tile_index);
 
-                        for _ in 0..tile_offset {
-                            pixel_row.pop_front();
+                                for _ in 0..tile_offset {
+                                    pixel_row.pop_front();
+                                }
+                                self.bg_fifo.extend(pixel_row);
+                            }
                         }
-                        self.bg_fifo.extend(pixel_row);
 
                         /*for x_temp in 0..7 {
                             for object in self.obj_buffer.clone() {
@@ -294,7 +299,10 @@ impl PPU {
 
                     //every 8 pixels (after the initial pixels are pushed), fetch a new tile
                     if self.bg_fifo.is_empty() {
-                        if self.is_window_fetching_mode {
+                        if !self.lcdc_0_bg_window_enable {
+                            self.bg_fifo.push_back(Pixel { color: 0, palette: None, bg_priority: None, tile: None });
+                        }
+                        else if self.is_window_fetching_mode {
                             let tile_map_offset_x = (self.w_lx >> 3) as usize;
                             let tile_map_offset_y = (((self.w_ly as u16) & 0xF8) << 2) as usize;
                             let tile_index = self.video_ram[0][w_tile_map_index + tile_map_offset_x + tile_map_offset_y];
