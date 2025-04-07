@@ -423,6 +423,10 @@ impl PPU {
 
     fn tile_row_fetch(&self, tile_index: u8, tile_height: u16, y_flip: bool, x_flip: bool, bank: usize, is_obj: bool) -> VecDeque<u8> {
         let mut tile_row = VecDeque::with_capacity(8);
+        let tile_index = match is_obj && self.lcdc_2_obj_is_tall {
+            true => tile_index & 0xFE,
+            false => tile_index
+        };
 
         let tile_address = match self.lcdc_4_tile_data_area || is_obj {
             true => (tile_index as u16) << 4,
