@@ -37,8 +37,12 @@ pub struct PPU {
 
     //Misc. variables
     dot_counter: u16, //The current dot on the current scanline;
-    lx: u8, //The current pixel being pushed in mode 3
     mode_3_penalty: u8,
+    lx: u8, //The current pixel being pushed in mode 3
+    w_ly: u8, //The current line of the window
+    w_lx: u8, //The currrent x coordinate of the window
+    ly_eq_wy: bool, //Whether or not ly = wy is true at any point in the frame
+    is_window_fetching_mode: bool,
 }
 
 //PPU mode values 
@@ -77,8 +81,12 @@ impl PPU {
             obj_fifo: VecDeque::with_capacity(8),
             screen: [[Pixel {color: 0, palette: None, bg_priority: None, tile: None}; 160]; 144],
             dot_counter: 0,
-            lx: 0,
             mode_3_penalty: 0,
+            lx: 0,
+            w_ly: 0,
+            w_lx: 0,
+            ly_eq_wy: false,
+            is_window_fetching_mode: false,
         }
     }
 
@@ -214,7 +222,8 @@ impl PPU {
             }
             PPU_MODE_3_DRAW_PIXELS => {
                 if self.mode_3_penalty == 0 {
-                    let tile_map_index = self.lcdc_3_bg_tile_map_area as usize;
+                    let bg_tile_map_index = self.lcdc_3_bg_tile_map_area as usize;
+                    let w_tile_map_index = self.lcdc_6_window_tile_map_area as usize;
                     
                     //TODO: Implement Window fetching
                     //If at the beginning of a scanline, fetch pixels from tile cut off by scx
@@ -222,7 +231,7 @@ impl PPU {
                         let tile_offset = self.scx & 0b111;
                         let tile_map_offset_x = (self.scx >> 3) as usize;
                         let tile_map_offset_y = (((self.ly as u16 + self.scy as u16) & 0xF8) << 2) as usize;
-                        let tile_index = self.video_ram[0][tile_map_index + tile_map_offset_x + tile_map_offset_y];
+                        let tile_index = self.video_ram[0][bg_tile_map_index + tile_map_offset_x + tile_map_offset_y];
                         let mut pixel_row = self.tile_fetch_bg(tile_index);
 
                         for _ in 0..tile_offset {
@@ -279,13 +288,17 @@ impl PPU {
                         self.mode_3_penalty = tile_offset + 12;
                     }
                     //every 8 pixels (after the initial pixels are pushed), fetch a new tile
-                    else if (self.lx + self.scx) & 0b111 == 0 {
-                        let tile_map_offset_x = ((self.lx + self.scx) >> 3) as usize;
-                        let tile_map_offset_y = (((self.ly as u16 + self.scy as u16) & 0xF8) << 2) as usize;
-                        let tile_index = self.video_ram[0][tile_map_index + tile_map_offset_x + tile_map_offset_y];
-                        let pixel_row = self.tile_fetch_bg(tile_index);
-                        self.bg_fifo.extend(pixel_row);
-                        self.mode_3_penalty = 8;
+                    else if self.bg_fifo.is_empty() {
+                        if self.is_window_fetching_mode {
+                            //TODO Implement window fetching code
+                        }
+                        else {
+                            let tile_map_offset_x = ((self.lx + self.scx) >> 3) as usize;
+                            let tile_map_offset_y = (((self.ly as u16 + self.scy as u16) & 0xF8) << 2) as usize;
+                            let tile_index = self.video_ram[0][bg_tile_map_index + tile_map_offset_x + tile_map_offset_y];
+                            self.bg_fifo = self.tile_fetch_bg(tile_index);
+                            self.mode_3_penalty = 8;
+                        }
                     }
 
                     //Fetch objects with the same x coordinate as the current pixel
@@ -306,6 +319,18 @@ impl PPU {
                                 }
                             }
                             self.obj_fifo.extend(pixel_row);
+                        }
+                    }
+
+                    if !self.is_window_fetching_mode {
+                        self.is_window_fetching_mode = self.lcdc_5_window_enabled && self.ly_eq_wy && (self.lx + 7) >= self.wx;
+                        if self.is_window_fetching_mode {
+                            self.mode_3_penalty += 6;
+
+                            let tile_map_offset_x = (self.w_lx >> 3) as usize;
+                            let tile_map_offset_y = (((self.w_ly as u16) & 0xF8) << 2) as usize;
+                            let tile_index = self.video_ram[0][w_tile_map_index + tile_map_offset_x + tile_map_offset_y];
+                            self.bg_fifo = self.tile_fetch_w(tile_index);
                         }
                     }
 
@@ -347,6 +372,8 @@ impl PPU {
         else if self.ppu_mode == PPU_MODE_3_DRAW_PIXELS && self.lx == 160 {
             self.ppu_mode = PPU_MODE_0_HBLANK;
             self.lx = 0;
+            self.w_lx = 0;
+            self.is_window_fetching_mode = false;
             self.obj_buffer.clear();
             self.bg_fifo.clear();
             self.obj_fifo.clear();
@@ -355,6 +382,8 @@ impl PPU {
             self.dot_counter = 0;
             if self.ly >= 153 {
                 self.ly = 0;
+                self.w_ly = 0;
+                self.ly_eq_wy = false;
                 self.ppu_mode = PPU_MODE_2_OAM_SCAN;
             }
             else {
@@ -411,6 +440,19 @@ impl PPU {
 
     fn tile_fetch_bg(&self, tile_index: u8) -> VecDeque<Pixel> {
         let tile_height = (self.ly as u16 + self.scy as u16) & 0b111;
+        //TODO:: Add support for CGB (BG attribute map support)
+        let color_row = self.tile_row_fetch(tile_index, tile_height, false, false, 0, false);
+        let mut pixel_row = VecDeque::with_capacity(8);
+
+        for pixel in color_row {
+            pixel_row.push_back(Pixel{color: pixel, palette: None, bg_priority: None, tile: None});
+        }
+
+        pixel_row
+    }
+
+    fn tile_fetch_w(&self, tile_index: u8) -> VecDeque<Pixel> {
+        let tile_height = (self.w_ly as u16) & 0b111;
         //TODO:: Add support for CGB (BG attribute map support)
         let color_row = self.tile_row_fetch(tile_index, tile_height, false, false, 0, false);
         let mut pixel_row = VecDeque::with_capacity(8);
