@@ -224,6 +224,10 @@ impl PPU {
                 if self.mode_3_penalty == 0 {
                     let bg_tile_map_index = self.lcdc_3_bg_tile_map_area as usize;
                     let w_tile_map_index = self.lcdc_6_window_tile_map_area as usize;
+
+                    if self.ly == self.wy {
+                        self.ly_eq_wy = true;
+                    }
                     
                     //TODO: Implement Window fetching
                     //If at the beginning of a scanline, fetch pixels from tile cut off by scx
@@ -287,10 +291,14 @@ impl PPU {
 
                         self.mode_3_penalty = tile_offset + 12;
                     }
+
                     //every 8 pixels (after the initial pixels are pushed), fetch a new tile
-                    else if self.bg_fifo.is_empty() {
+                    if self.bg_fifo.is_empty() {
                         if self.is_window_fetching_mode {
-                            //TODO Implement window fetching code
+                            let tile_map_offset_x = (self.w_lx >> 3) as usize;
+                            let tile_map_offset_y = (((self.w_ly as u16) & 0xF8) << 2) as usize;
+                            let tile_index = self.video_ram[0][w_tile_map_index + tile_map_offset_x + tile_map_offset_y];
+                            self.bg_fifo = self.tile_fetch_w(tile_index);
                         }
                         else {
                             let tile_map_offset_x = ((self.lx + self.scx) >> 3) as usize;
@@ -356,6 +364,9 @@ impl PPU {
                             None => bg_pixel,
                         };
                         self.lx += 1;
+                        if self.is_window_fetching_mode {
+                            self.w_lx += 1;
+                        } 
                     }
                 }
                 else {
@@ -387,7 +398,10 @@ impl PPU {
                 self.ppu_mode = PPU_MODE_2_OAM_SCAN;
             }
             else {
-                self.ly += 1; 
+                self.ly += 1;
+                if self.is_window_fetching_mode {
+                    self.w_ly += 1;
+                }
 
                 if self.ppu_mode == PPU_MODE_0_HBLANK && self.ly < 144 {
                     self.ppu_mode = PPU_MODE_2_OAM_SCAN;
