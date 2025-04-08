@@ -233,9 +233,9 @@ impl PPU {
                     //If at the beginning of a scanline, fetch pixels from tile cut off by scx
                     if self.lx == 0 {
                         let tile_offset = self.scx & 0b111;
-                        if self.lcdc_0_bg_window_enable{
+                        /*if self.lcdc_0_bg_window_enable{
                             self.is_window_fetching_mode = self.lcdc_5_window_enabled && self.ly_eq_wy && (self.lx + 7) >= self.wx;
-                            if !self.is_window_fetching_mode {
+                            if !self.is_window_fetching_mode {*/
                                 let tile_map_offset_x = (self.scx >> 3) as usize;
                                 let tile_map_offset_y = (((self.ly as u16 + self.scy as u16) & 0xF8) << 2) as usize;
                                 let tile_index = self.video_ram[0][bg_tile_map_index + tile_map_offset_x + tile_map_offset_y];
@@ -245,8 +245,8 @@ impl PPU {
                                     pixel_row.pop_front();
                                 }
                                 self.bg_fifo.extend(pixel_row);
-                            }
-                        }
+                        /*    }
+                        }*/
 
                         /*for x_temp in 0..7 {
                             for object in self.obj_buffer.clone() {
@@ -343,10 +343,18 @@ impl PPU {
                         if self.is_window_fetching_mode {
                             self.mode_3_penalty += 6;
 
-                            let tile_map_offset_x = (self.w_lx >> 3) as usize;
+                            let tile_map_offset_x = if self.wx < 7 && self.lx < 7 {0} else {(self.w_lx >> 3) as usize};
                             let tile_map_offset_y = (((self.w_ly as u16) & 0xF8) << 2) as usize;
                             let tile_index = self.video_ram[0][w_tile_map_index + tile_map_offset_x + tile_map_offset_y];
                             self.bg_fifo = self.tile_fetch_w(tile_index);
+
+                            if self.wx < 7 && self.w_lx < 7 {
+                                self.w_lx = 7 - self.wx;
+
+                                for _ in 0..self.w_lx {
+                                    self.bg_fifo.pop_front();
+                                }
+                            } 
                         }
                     }
 
@@ -392,6 +400,9 @@ impl PPU {
             self.ppu_mode = PPU_MODE_0_HBLANK;
             self.lx = 0;
             self.w_lx = 0;
+            if self.is_window_fetching_mode {
+                self.w_ly += 1;
+            }
             self.is_window_fetching_mode = false;
             self.obj_buffer.clear();
             self.bg_fifo.clear();
@@ -407,9 +418,6 @@ impl PPU {
             }
             else {
                 self.ly += 1;
-                if self.is_window_fetching_mode {
-                    self.w_ly += 1;
-                }
 
                 if self.ppu_mode == PPU_MODE_0_HBLANK && self.ly < 144 {
                     self.ppu_mode = PPU_MODE_2_OAM_SCAN;
