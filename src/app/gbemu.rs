@@ -1,5 +1,5 @@
 use core::time;
-use std::{fs::File, io::Read, sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex}, thread};
+use std::{fs::File, io::Read, sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex}, thread, time::{Duration, Instant}};
 use console::GBConsole;
 use egui::Color32;
 
@@ -90,11 +90,11 @@ impl GBEmu {
 
         let mut console_output = String::new();
 
-        /*//Enforce framerate
+        //Enforce framerate
         let clock_speed = 4.194304;
         //let fps = 4.0;
         let cycle_time = Duration::from_nanos((4000_f64 / clock_speed).round() as u64);
-        let mut next_cycle = Instant::now() + cycle_time;*/
+        let mut next_cycle = Instant::now() + cycle_time;
 
         let mut cpu_delay = 0;
         '_Frame: loop {
@@ -125,8 +125,8 @@ impl GBEmu {
                     }
 
                     //Wait until next m_cycle
-                    /*thread::sleep(next_cycle - Instant::now());
-                    next_cycle += cycle_time;*/
+                    thread::sleep(next_cycle - Instant::now());
+                    next_cycle += cycle_time;
                 }
             }
 
@@ -140,6 +140,7 @@ impl GBEmu {
             let obj1_pallette = Self::dmg_pallette(console.dmg_obj_pallette_1);
 
             for i in 0..144 {
+                let mut pixel_chunk = ScreenPixel { color: Color32::PLACEHOLDER, x: -1.0, y: -1.0, width: 0.0};
                 for j in 0..160 {
                     let pixel_color = match (*internal_screen)[i][j].palette {
                         None => bg_pallette[internal_screen[i][j].color as usize],
@@ -152,7 +153,18 @@ impl GBEmu {
                             }
                         }
                     };
-                    pixel_colors.push(ScreenPixel{ color: pixel_color, x: j as f32, y: i as f32});
+
+                    if pixel_color != pixel_chunk.color {
+                        pixel_colors.push(pixel_chunk.clone());
+                        pixel_chunk.color = pixel_color;
+                        pixel_chunk.width = 0.0;
+                        pixel_chunk.x = j as f32;
+                        pixel_chunk.y = i as f32;
+                    }
+                    pixel_chunk.width += 1.0;
+                }
+                if pixel_chunk.width > 0.0 {
+                    pixel_colors.push(pixel_chunk.clone());
                 }
             }
 
@@ -188,6 +200,7 @@ pub struct ScreenPixel {
     color: Color32,
     x: f32,
     y: f32,
+    width: f32,
 }
 
 impl ScreenPixel {
@@ -198,7 +211,7 @@ impl ScreenPixel {
         let min_x = x_offset + (pixel_width * self.x);
         let min_y = y_offset + (pixel_height * self.y);
     
-        let max_x = min_x + pixel_width;
+        let max_x = min_x + (pixel_width * self.width);
         let max_y = min_y + pixel_height;
         
         egui::epaint::RectShape::new(
