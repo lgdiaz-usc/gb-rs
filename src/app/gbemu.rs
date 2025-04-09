@@ -90,6 +90,12 @@ impl GBEmu {
 
         let mut console_output = String::new();
 
+        /*//Enforce framerate
+        let clock_speed = 4.194304;
+        //let fps = 4.0;
+        let cycle_time = Duration::from_nanos((4000_f64 / clock_speed).round() as u64);
+        let mut next_cycle = Instant::now() + cycle_time;*/
+
         let mut cpu_delay = 0;
         '_Frame: loop {
             for _scanline in 0..154 {
@@ -117,6 +123,10 @@ impl GBEmu {
                             console_output.push((serial_output as char).to_ascii_uppercase());
                         }
                     }
+
+                    //Wait until next m_cycle
+                    /*thread::sleep(next_cycle - Instant::now());
+                    next_cycle += cycle_time;*/
                 }
             }
 
