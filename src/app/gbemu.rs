@@ -13,7 +13,7 @@ pub struct GBEmu {
     pub rom_file_path: Arc<Mutex<Option<String>>>,
     pub rom_info: Arc<Mutex<Option<CartridgeInfo>>>,
     pub file_changed: Arc<AtomicBool>,
-    pub screen_pixels: Arc<Mutex<Option<[[Color32; 160]; 144]>>>,
+    pub screen_pixels: Arc<Mutex<Option<Vec<ScreenPixel>>>>,
 }
 
 impl Default for GBEmu {
@@ -134,14 +134,14 @@ impl GBEmu {
             console_output.clear();
 
             let internal_screen = console.dump_screen();
-            let mut pixel_colors = [[Color32::WHITE; 160]; 144];
+            let mut pixel_colors = Vec::new();
             let bg_pallette = Self::dmg_pallette(console.dmg_bg_pallette);
             let obj0_pallette = Self::dmg_pallette(console.dmg_obj_pallette_0);
             let obj1_pallette = Self::dmg_pallette(console.dmg_obj_pallette_1);
 
             for i in 0..144 {
                 for j in 0..160 {
-                    pixel_colors[i][j] = match (*internal_screen)[i][j].palette {
+                    let pixel_color = match (*internal_screen)[i][j].palette {
                         None => bg_pallette[internal_screen[i][j].color as usize],
                         Some(pallette) => {
                             if pallette == 0 {
@@ -151,7 +151,8 @@ impl GBEmu {
                                 obj1_pallette[internal_screen[i][j].color as usize]
                             }
                         }
-                    }
+                    };
+                    pixel_colors.push(ScreenPixel{ color: pixel_color, x: j as f32, y: i as f32});
                 }
             }
 
@@ -179,6 +180,36 @@ impl GBEmu {
         }
 
         pallette
+    }
+}
+
+#[derive(Clone)]
+pub struct ScreenPixel {
+    color: Color32,
+    x: f32,
+    y: f32,
+}
+
+impl ScreenPixel {
+    pub fn to_rect(&self, game_height: f32, game_width: f32, y_offset: f32, x_offset: f32) -> egui::epaint::RectShape {
+        let pixel_width = game_width / 160.0;
+        let pixel_height = game_height / 144.0;
+    
+        let min_x = x_offset + (pixel_width * self.x);
+        let min_y = y_offset + (pixel_height * self.y);
+    
+        let max_x = min_x + pixel_width;
+        let max_y = min_y + pixel_height;
+        
+        egui::epaint::RectShape::new(
+            egui::Rect {
+                min: egui::Pos2::new(min_x, min_y),
+                max: egui::Pos2::new(max_x, max_y)
+            },
+            egui::Rounding::ZERO,
+            self.color,
+            egui::Stroke::NONE
+        )
     }
 }
 

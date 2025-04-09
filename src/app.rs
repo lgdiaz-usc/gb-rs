@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 pub mod gbemu;
 pub mod cartridge_info;
 pub use cartridge_info::CGBState;
-use egui::{epaint::RectShape, Color32, Pos2, Rect, Rounding, Shape, Stroke};
+use egui::Shape;
 
 
 impl eframe::App for gbemu::GBEmu {
@@ -81,13 +81,11 @@ impl eframe::App for gbemu::GBEmu {
             let lock = self.screen_pixels.lock().unwrap();
             if let Some(color_array) = lock.clone() {
                 let painter = ui.painter();
-                let mut pixel_stack: Vec<Shape> = Vec::new();
+                let pixel_stack: Vec<Shape>;
 
-                for y in 0..144 {
-                    for x in 0..160 {
-                        pixel_stack.push(Shape::Rect(to_rect(color_array[y][x], game_height, game_width, y_offset, x_offset, x as f32, y as f32)));
-                    }
-                }
+                pixel_stack = color_array.iter()
+                           .map(|pixel| Shape::Rect(pixel.to_rect(game_height, game_width, y_offset, x_offset)))
+                           .collect();
 
                 painter.extend(pixel_stack);
             }
@@ -150,27 +148,6 @@ impl eframe::App for gbemu::GBEmu {
             }
         });
     }
-}
-
-fn to_rect(color: Color32, game_height: f32, game_width: f32, y_offset: f32, x_offset: f32, x: f32, y: f32) -> RectShape {
-    let pixel_width = game_width / 160.0;
-    let pixel_height = game_height / 144.0;
-
-    let min_x = x_offset + (pixel_width * x);
-    let min_y = y_offset + (pixel_height * y);
-
-    let max_x = min_x + pixel_width;
-    let max_y = min_y + pixel_height;
-    
-    RectShape::new(
-        Rect {
-            min: Pos2::new(min_x, min_y),
-            max: Pos2::new(max_x, max_y)
-        },
-        Rounding::ZERO,
-        color,
-        Stroke::NONE
-    )
 }
 
 /*fn parse_tile(tile: Tile) {
