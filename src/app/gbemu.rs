@@ -92,11 +92,12 @@ impl GBEmu {
 
         //Enforce framerate
         let clock_speed = 4.194304;
+        let speed_factor = 1;
         //let fps = 4.0;
-        let cycle_time = Duration::from_nanos((4000_f64 / clock_speed).round() as u64);
-        let mut next_cycle = Instant::now() + cycle_time;
+        let cycle_time = Duration::from_nanos((4000_f64 / clock_speed).round() as u64 * speed_factor);
+        let mut _next_cycle = Instant::now() + cycle_time;
 
-        let mut cpu_delay = 0;
+        let mut cpu_delay = 255;
         '_Frame: loop {
             for _scanline in 0..154 {
                 for _cycle in 0..114 {
@@ -113,6 +114,7 @@ impl GBEmu {
                             console.interrupt_master_enable_flag = console::IMEState::Enabled
                         }
                         console.execute_instruction();
+                        cpu_delay -= 1;
                     }
 
                     console.update_timer();
@@ -125,8 +127,8 @@ impl GBEmu {
                     }
 
                     //Wait until next m_cycle
-                    thread::sleep(next_cycle - Instant::now());
-                    next_cycle += cycle_time;
+                    /*thread::sleep(next_cycle - Instant::now());
+                    next_cycle += cycle_time;*/
                 }
             }
 
