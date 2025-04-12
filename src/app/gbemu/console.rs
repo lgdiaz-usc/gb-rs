@@ -42,6 +42,7 @@ pub struct GBConsole {
     timer_modulo: u8, //TMA
     timer_control: u8, //TAC
     timer_overflowed: bool,
+    timer_overflowed_after: bool,
 
     //DMG Pallette registers
     pub dmg_bg_pallette: u8,    //BGP
@@ -110,6 +111,7 @@ impl GBConsole {
             timer_modulo: 0x00,
             timer_control: 0xF8,
             timer_overflowed: false,
+            timer_overflowed_after: false,
             dmg_bg_pallette: 0xFC,
             dmg_obj_pallette_0: 0x00,
             dmg_obj_pallette_1: 0x00,
@@ -278,9 +280,23 @@ impl GBConsole {
                     let system_counter_before = self.system_counter;
                     self.system_counter = 0;
                     self.timer_tick(system_counter_before, self.timer_control);
-                    return;                }
-                0xFF05 => &mut self.timer_counter, //TIMA
-                0xFF06 => &mut self.timer_modulo, //TMA
+                    return;
+                }
+                0xFF05 => { //TIMA
+                    if self.timer_overflowed {
+                        self.timer_overflowed = false;
+                    }
+                    if self.timer_overflowed_after {
+                        return;
+                    }
+                    &mut self.timer_counter
+                },
+                0xFF06 => { //TMA
+                    if self.timer_overflowed_after {
+                        self.timer_counter = value;
+                    }
+                    &mut self.timer_modulo
+                },
                 0xFF07 => { //TAC
                    let timer_control_before = self.timer_control;
                    self.timer_control = value;
@@ -439,17 +455,22 @@ impl GBConsole {
     }
 
     pub fn update_timer(&mut self) {
+        if self.timer_overflowed_after {
+            self.timer_overflowed_after = false;
+        }
         //timer counter is reset and interrupt is requested on the m-cycle after overflow
         if self.timer_overflowed {
             self.timer_counter = self.timer_modulo;
             self.interrupt_flag |= 0b100;
             self.timer_overflowed = false;
+            self.timer_overflowed_after = true;
         }
 
         let system_counter_before = self.system_counter;
         self.system_counter += 1;
 
         self.timer_tick(system_counter_before, self.timer_control);
+        let _balls = 0;
     }
 
     fn timer_tick(&mut self, system_counter_before: u16, timer_control_before: u8) {
@@ -1595,6 +1616,10 @@ impl GBConsole {
 
     pub fn get_instruction_delay(&self) -> u8 {
         let opcode = self.read(self.program_counter);
+
+        if false {
+            self.debug_message(opcode);
+        }
 
         match opcode {
             //One-offs
