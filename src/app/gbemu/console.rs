@@ -363,7 +363,7 @@ impl GBConsole {
     }
 
     pub fn handle_interrupt(&mut self) -> u8 {
-        if self.is_halted && self.interrupt_master_enable_flag != IMEState::Enabled && self.interrupt_flag & 0b00011111 > 0 {
+        if self.is_halted && self.interrupt_master_enable_flag != IMEState::Enabled && self.interrupt_flag & self.interrupt_enable > 0 {
             self.is_halted = false;
         }
 
@@ -605,7 +605,7 @@ impl GBConsole {
                 if self.interrupt_master_enable_flag == IMEState::Enabled {
                     self.is_halted = true;
                 }
-                else if self.interrupt_flag & 0b00011111 == 0{
+                else if self.interrupt_flag & self.interrupt_enable == 0 {
                     self.is_halted = true;
                 }
             }
