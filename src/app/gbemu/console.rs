@@ -417,10 +417,9 @@ impl GBConsole {
 
         //Update Interrupt flags
         let stat = self.ppu.read(0xFF41);
-        let mut interrupt_flag_temp = self.interrupt_flag & 0b11111100;
 
         if self.ppu.get_mode() == 1 { //If in VBLANK mode, set VBLANK flag
-            interrupt_flag_temp |= 0b1;
+            self.interrupt_flag |= 0b1;
         }
 
         //Set STAT/LCD flag if:
@@ -428,10 +427,9 @@ impl GBConsole {
          stat & 0b10011 == 0b10001 || //STAT mode 1 is selected and the mode is 1
          stat & 0b100011 == 0b100010 || //STAT mode 2 is selected and the mode is 2
          stat & 0b1000100 == 0b1000100 { //LYC check is selected and LY == LYC
-            interrupt_flag_temp |= 0b10;
+            self.interrupt_flag |= 0b10;
         }
         
-        self.interrupt_flag = interrupt_flag_temp;
     }
 
     pub fn check_serial(&mut self) -> Option<u8> {
