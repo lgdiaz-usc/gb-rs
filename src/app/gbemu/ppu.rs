@@ -169,6 +169,13 @@ impl PPU {
                     self.lcdc_2_obj_is_tall = value & 4 > 0;
                     self.lcdc_1_obj_enable = value & 2 > 0;
                     self.lcdc_0_bg_window_enable = value & 1 > 0;
+
+                    if !self.lcdc_7_lcd_enabled {
+                        self.ly = 0;
+                        self.dot_counter = 0;
+                        self.ppu_mode = PPU_MODE_0_HBLANK;
+                        self.stat &= 0xFC;
+                    }
                     return;
                 }
                 0xFF41 => { //STAT
@@ -192,10 +199,6 @@ impl PPU {
     }
 
     pub fn update(&mut self) {
-        if !self.lcdc_7_lcd_enabled {
-            self.ppu_mode = PPU_MODE_1_VBLANK;
-        }
-        
         match self.ppu_mode {
             PPU_MODE_0_HBLANK => {
                 
@@ -389,43 +392,43 @@ impl PPU {
             _ => panic!("ERROR: Invalid PPU Mode \"{}\"", self.ppu_mode)
         }
 
-        self.dot_counter += 1;
-        if self.ppu_mode == PPU_MODE_2_OAM_SCAN && self.dot_counter == 80 {
-            self.ppu_mode = PPU_MODE_3_DRAW_PIXELS;
-        }
-        else if self.ppu_mode == PPU_MODE_3_DRAW_PIXELS && self.lx == 160 {
-            self.ppu_mode = PPU_MODE_0_HBLANK;
-            self.lx = 0;
-            self.w_lx = 0;
-            if self.is_window_fetching_mode {
-                self.w_ly += 1;
+        if self.lcdc_7_lcd_enabled {
+            self.dot_counter += 1;
+            if self.ppu_mode == PPU_MODE_2_OAM_SCAN && self.dot_counter == 80 {
+                self.ppu_mode = PPU_MODE_3_DRAW_PIXELS;
             }
-            self.is_window_fetching_mode = false;
-            self.obj_buffer.clear();
-            self.bg_fifo.clear();
-            self.obj_fifo.clear();
-        }
-        else if self.dot_counter == 456 {
-            self.dot_counter = 0;
-            if self.ly >= 153 {
-                self.ly = 0;
-                self.w_ly = 0;
-                self.ly_eq_wy = false;
-                self.ppu_mode = PPU_MODE_2_OAM_SCAN;
+            else if self.ppu_mode == PPU_MODE_3_DRAW_PIXELS && self.lx == 160 {
+                self.ppu_mode = PPU_MODE_0_HBLANK;
+                self.lx = 0;
+                self.w_lx = 0;
+                if self.is_window_fetching_mode {
+                    self.w_ly += 1;
+                }
+                self.is_window_fetching_mode = false;
+                self.obj_buffer.clear();
+                self.bg_fifo.clear();
+                self.obj_fifo.clear();
             }
-            else {
-                self.ly += 1;
-
-                if self.ppu_mode == PPU_MODE_0_HBLANK && self.ly < 144 {
+            else if self.dot_counter == 456 {
+                self.dot_counter = 0;
+                if self.ly >= 153 {
+                    self.ly = 0;
+                    self.w_ly = 0;
+                    self.ly_eq_wy = false;
                     self.ppu_mode = PPU_MODE_2_OAM_SCAN;
                 }
                 else {
-                    self.ppu_mode = PPU_MODE_1_VBLANK;
+                    self.ly += 1;
+
+                    if self.ppu_mode == PPU_MODE_0_HBLANK && self.ly < 144 {
+                        self.ppu_mode = PPU_MODE_2_OAM_SCAN;
+                    }
+                    else {
+                        self.ppu_mode = PPU_MODE_1_VBLANK;
+                    }
                 }
             }
-        }
 
-        if self.lcdc_7_lcd_enabled {
             let mut stat = self.stat & 0b11111000;
             if self.ly == self.ly_compare {
                 stat |= 0b100;
@@ -433,9 +436,6 @@ impl PPU {
             stat |= self.ppu_mode;
 
             self.stat = stat;
-        }
-        else {
-            self.stat &= 0xFC;
         }
     }
 
