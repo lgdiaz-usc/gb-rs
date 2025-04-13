@@ -524,6 +524,10 @@ impl PPU {
         self.ppu_mode
     }
 
+    pub fn has_entered_vblank(&self) -> bool {
+        self.ly == 144 && self.dot_counter == 0
+    }
+
     pub fn dma_transfer(&mut self, value: u8, address: u8) {
         self.object_attribute_memory[address as usize] = value;
     }

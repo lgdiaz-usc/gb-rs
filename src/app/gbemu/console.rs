@@ -418,7 +418,7 @@ impl GBConsole {
         //Update Interrupt flags
         let stat = self.ppu.read(0xFF41);
 
-        if self.ppu.get_mode() == 1 { //If in VBLANK mode, set VBLANK flag
+        if self.ppu.has_entered_vblank() { //If in VBLANK mode, set VBLANK flag
             self.interrupt_flag |= 0b1;
         }
 
