@@ -413,20 +413,29 @@ impl GBConsole {
             self.dma_counter += 1;
         }
 
+        //get the value of STAT abefore the operation
+        let stat = self.ppu.read(0xFF41);
+        let stat_before = stat & 0b1011 == 0b1000 || //STAT mode 0 is selcted and the mode is 0
+                                stat & 0b10011 == 0b10001 || //STAT mode 1 is selected and the mode is 1
+                                stat & 0b100011 == 0b100010 || //STAT mode 2 is selected and the mode is 2
+                                stat & 0b1000100 == 0b1000100; //LYC check is selected and LY == LYC
+
         self.ppu.update();
 
-        //Update Interrupt flags
+        //Get the value of STAT after the PPU operation
         let stat = self.ppu.read(0xFF41);
+        let stat_after = stat & 0b1011 == 0b1000 || //STAT mode 0 is selcted and the mode is 0
+                               stat & 0b10011 == 0b10001 || //STAT mode 1 is selected and the mode is 1
+                               stat & 0b100011 == 0b100010 || //STAT mode 2 is selected and the mode is 2
+                               stat & 0b1000100 == 0b1000100; //LYC check is selected and LY == LYC
 
-        if self.ppu.has_entered_vblank() { //If in VBLANK mode, set VBLANK flag
+        //If in VBLANK mode, set VBLANK flag
+        if self.ppu.has_entered_vblank() {
             self.interrupt_flag |= 0b1;
         }
 
-        //Set STAT/LCD flag if:
-        if stat & 0b1011 == 0b1000 || //STAT mode 0 is selcted and the mode is 0
-         stat & 0b10011 == 0b10001 || //STAT mode 1 is selected and the mode is 1
-         stat & 0b100011 == 0b100010 || //STAT mode 2 is selected and the mode is 2
-         stat & 0b1000100 == 0b1000100 { //LYC check is selected and LY == LYC
+        //Set STAT/LCD flag if STAT condition changes from false to true
+        if !stat_before && stat_after {
             self.interrupt_flag |= 0b10;
         }
         
