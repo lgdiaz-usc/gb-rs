@@ -129,15 +129,7 @@ impl PPU {
 
                     lcdc
                 }
-                0xFF41 => { //STAT
-                    let mut stat = self.stat & 0b01111000;
-                    if self.ly == self.ly_compare {
-                        stat |= 0b100;
-                    }
-                    stat |= self.ppu_mode;
-
-                    stat
-                }
+                0xFF41 => self.stat,
                 0xFF42 => self.scy,
                 0xFF43 => self.scx,
                 0xFF44 => self.ly,
@@ -164,6 +156,8 @@ impl PPU {
             }
         }
         else if address >= 0xFF00 && address <= 0xFF7F {
+            let mut value = value;
+
             //TODO: Implement PPU registers
             let register = match address {
                 0xFF40 => { //LCDC
@@ -177,7 +171,10 @@ impl PPU {
                     self.lcdc_0_bg_window_enable = value & 1 > 0;
                     return;
                 }
-                0xFF41 => &mut self.stat, //STAT
+                0xFF41 => { //STAT
+                    value |= 0x80;
+                    &mut self.stat
+                }
                 0xFF42 => &mut self.scy,
                 0xFF43 => &mut self.scx,
                 0xFF44 => return, //LY is read only!
@@ -426,6 +423,19 @@ impl PPU {
                     self.ppu_mode = PPU_MODE_1_VBLANK;
                 }
             }
+        }
+
+        if self.lcdc_7_lcd_enabled {
+            let mut stat = self.stat & 0b11111000;
+            if self.ly == self.ly_compare {
+                stat |= 0b100;
+            }
+            stat |= self.ppu_mode;
+
+            self.stat = stat;
+        }
+        else {
+            self.stat &= 0xFC;
         }
     }
 
