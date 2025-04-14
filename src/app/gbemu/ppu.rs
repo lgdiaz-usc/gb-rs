@@ -38,6 +38,9 @@ pub struct PPU {
     //Misc. variables
     dot_counter: u16, //The current dot on the current scanline;
     mode_3_penalty: u8,
+    bg_fetch_state: u8,
+    obj_fetch_state: u8,
+    fetched_obj_address: u16,
     lx: u8, //The current pixel being pushed in mode 3
     w_ly: u8, //The current line of the window
     w_lx: u8, //The currrent x coordinate of the window
@@ -82,6 +85,9 @@ impl PPU {
             screen: [[Pixel {color: 0, palette: None, bg_priority: None, tile: None}; 160]; 144],
             dot_counter: 0,
             mode_3_penalty: 0,
+            bg_fetch_state: 0,
+            obj_fetch_state: 7,
+            fetched_obj_address: 0,
             lx: 0,
             w_ly: 0,
             w_lx: 0,
@@ -221,82 +227,10 @@ impl PPU {
                 }
             }
             PPU_MODE_3_DRAW_PIXELS => {
-                if self.mode_3_penalty == 0 {
-                    let bg_tile_map_index = self.lcdc_3_bg_tile_map_area as usize;
-                    let w_tile_map_index = self.lcdc_6_window_tile_map_area as usize;
+                let bg_tile_map_index = self.lcdc_3_bg_tile_map_area as usize;
+                let w_tile_map_index = self.lcdc_6_window_tile_map_area as usize;
 
-                    if self.ly == self.wy {
-                        self.ly_eq_wy = true;
-                    }
-                    
-                    //TODO: Implement Window fetching
-                    //If at the beginning of a scanline, fetch pixels from tile cut off by scx
-                    if self.lx == 0 {
-                        let tile_offset = self.scx & 0b111;
-                        /*if self.lcdc_0_bg_window_enable{
-                            self.is_window_fetching_mode = self.lcdc_5_window_enabled && self.ly_eq_wy && (self.lx + 7) >= self.wx;
-                            if !self.is_window_fetching_mode {*/
-                                let tile_map_offset_x = (self.scx >> 3) as usize;
-                                let tile_map_offset_y = (((self.ly as u16 + self.scy as u16) & 0xF8) << 2) as usize;
-                                let tile_index = self.video_ram[0][bg_tile_map_index + tile_map_offset_x + tile_map_offset_y];
-                                let mut pixel_row = self.tile_fetch_bg(tile_index);
-
-                                for _ in 0..tile_offset {
-                                    pixel_row.pop_front();
-                                }
-                                self.bg_fifo.extend(pixel_row);
-                        /*    }
-                        }*/
-
-                        /*for x_temp in 0..7 {
-                            for object in self.obj_buffer.clone() {
-                                if self.object_attribute_memory[object as usize + 1] == x_temp {
-                                    let mut pixel_row = self.tile_fetch_obj(object);
-                                    for _ in &self.obj_fifo {
-                                        pixel_row.pop_front();
-                                    }
-                                    self.obj_fifo.extend(pixel_row);
-                                    break;
-                                }
-                            }
-                            self.obj_fifo.pop_front();
-                        }*/
-
-                        let mut obj_buffer_temp = Vec::with_capacity(10);
-                        for object in self.obj_buffer.clone() {
-                            if self.object_attribute_memory[object as usize + 1] < 8 {
-                                obj_buffer_temp.push(object);
-                            }
-                        }
-                        for x_temp in 0..7 {
-                            for object in obj_buffer_temp.clone() {
-                                if self.object_attribute_memory[object as usize + 1] == x_temp {
-                                    let mut pixel_row = self.tile_fetch_obj(object);
-
-                                    if x_temp == 0 {
-                                        self.mode_3_penalty += 11;
-                                    }
-                                    else if !self.obj_fifo.is_empty() && pixel_row[0].tile == self.obj_fifo[0].tile {
-                                        self.mode_3_penalty += if self.obj_fifo.len() > 2 {self.obj_fifo.len() as u8 - 2} else {0} + 6;
-                                    }
-
-                                    for pixel_index in 0..self.obj_fifo.len() {
-                                        if self.obj_fifo[pixel_index].color == 0 {
-                                            self.obj_fifo[pixel_index] = pixel_row.pop_front().unwrap();
-                                        }
-                                        else {
-                                            pixel_row.pop_front();
-                                        }
-                                    }
-                                    self.obj_fifo.extend(pixel_row);
-                                }
-                            }
-                            self.obj_fifo.pop_front();
-                        }
-
-                        self.mode_3_penalty = tile_offset + 12;
-                    }
-
+                if self.bg_fetch_state == 6 {
                     //every 8 pixels (after the initial pixels are pushed), fetch a new tile
                     if self.bg_fifo.is_empty() {
                         if !self.lcdc_0_bg_window_enable {
@@ -313,51 +247,50 @@ impl PPU {
                             let tile_map_offset_y = (((self.ly as u16 + self.scy as u16) & 0xF8) << 2) as usize;
                             let tile_index = self.video_ram[0][bg_tile_map_index + tile_map_offset_x + tile_map_offset_y];
                             self.bg_fifo = self.tile_fetch_bg(tile_index);
-                            self.mode_3_penalty = 8;
                         }
-                    }
 
+                        self.bg_fetch_state = 0;
+                    }
+                }
+                else {
+                    self.bg_fetch_state += 1;
+                }
+
+                /*if self.obj_fetch_state == 7 {
                     //Fetch objects with the same x coordinate as the current pixel
                     for object in self.obj_buffer.clone() {
                         if self.object_attribute_memory[object as usize + 1] - 8 == self.lx {
-                            let mut pixel_row = self.tile_fetch_obj(object);
-                            
-                            if !self.obj_fifo.is_empty() && pixel_row[0].tile == self.obj_fifo[0].tile {
-                                self.mode_3_penalty += if self.obj_fifo.len() > 2 {self.obj_fifo.len() as u8 - 2} else {0} + 6;
-                            }
-
-                            for pixel_index in 0..self.obj_fifo.len() {
-                                if self.obj_fifo[pixel_index].color == 0 {
-                                    self.obj_fifo[pixel_index] = pixel_row.pop_front().unwrap();
-                                }
-                                else {
-                                    pixel_row.pop_front();
-                                }
-                            }
-                            self.obj_fifo.extend(pixel_row);
-                        }
-                    }
-
-                    if !self.is_window_fetching_mode {
-                        self.is_window_fetching_mode = self.lcdc_5_window_enabled && self.ly_eq_wy && (self.lx + 7) >= self.wx;
-                        if self.is_window_fetching_mode {
+                            self.fetched_obj_address = object;
+                            self.obj_fetch_state = 0;
+                            self.bg_fetch_state = 0;
                             self.mode_3_penalty += 6;
-
-                            let tile_map_offset_x = if self.wx < 7 && self.lx < 7 {0} else {(self.w_lx >> 3) as usize};
-                            let tile_map_offset_y = (((self.w_ly as u16) & 0xF8) << 2) as usize;
-                            let tile_index = self.video_ram[0][w_tile_map_index + tile_map_offset_x + tile_map_offset_y];
-                            self.bg_fifo = self.tile_fetch_w(tile_index);
-
-                            if self.wx < 7 && self.w_lx < 7 {
-                                self.w_lx = 7 - self.wx;
-
-                                for _ in 0..self.w_lx {
-                                    self.bg_fifo.pop_front();
-                                }
-                            } 
                         }
                     }
+                }
+                else if self.obj_fetch_state == 6 {
+                    let mut pixel_row = self.tile_fetch_obj(self.fetched_obj_address);
+                            
+                    if !self.obj_fifo.is_empty() && pixel_row[0].tile == self.obj_fifo[0].tile {
+                        self.mode_3_penalty += if self.obj_fifo.len() > 2 {self.obj_fifo.len() as u8 - 2} else {0};
+                    }
+                    
+                    for pixel_index in 0..self.obj_fifo.len() {
+                        if self.obj_fifo[pixel_index].color == 0 {
+                            self.obj_fifo[pixel_index] = pixel_row.pop_front().unwrap();
+                        }
+                        else {
+                            pixel_row.pop_front();
+                        }
+                    }
+                    self.obj_fifo.extend(pixel_row);
+                    self.obj_fetch_state = 7;
+                }
+                else {
+                    self.obj_fetch_state += 1;
+                    self.bg_fetch_state = 0;
+                }*/
 
+                if self.mode_3_penalty == 0 {
                     //Pixel Mixing
                     if !self.bg_fifo.is_empty() {
                         let bg_pixel = self.bg_fifo.pop_front().unwrap();
