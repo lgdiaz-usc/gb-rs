@@ -234,7 +234,9 @@ impl PPU {
                     //every 8 pixels (after the initial pixels are pushed), fetch a new tile
                     if self.bg_fifo.is_empty() {
                         if !self.lcdc_0_bg_window_enable {
-                            self.bg_fifo.push_back(Pixel { color: 0, palette: None, bg_priority: None, tile: None });
+                            for _ in 0..8 {
+                                self.bg_fifo.push_back(Pixel { color: 0, palette: None, bg_priority: None, tile: None });
+                            }
                         }
                         else if self.is_window_fetching_mode {
                             let tile_map_offset_x = (self.w_lx >> 3) as usize;
@@ -266,14 +268,17 @@ impl PPU {
                     self.bg_fetch_state += 1;
                 }
 
-                /*if self.obj_fetch_state == 7 {
+                if self.obj_fetch_state == 7 {
                     //Fetch objects with the same x coordinate as the current pixel
-                    for object in self.obj_buffer.clone() {
+                    for index in 0..self.obj_buffer.len() {
+                        let object = self.obj_buffer[index];
                         if self.object_attribute_memory[object as usize + 1] - 8 == self.lx {
                             self.fetched_obj_address = object;
                             self.obj_fetch_state = 0;
                             self.bg_fetch_state = 0;
                             self.mode_3_penalty += 6;
+                            self.obj_buffer.remove(index);
+                            break;
                         }
                     }
                 }
@@ -298,7 +303,7 @@ impl PPU {
                 else {
                     self.obj_fetch_state += 1;
                     self.bg_fetch_state = 0;
-                }*/
+                }
 
                 if self.mode_3_penalty == 0 {
                     //Pixel Mixing
