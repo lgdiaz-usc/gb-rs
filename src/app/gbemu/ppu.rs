@@ -247,6 +247,16 @@ impl PPU {
                             let tile_map_offset_y = (((self.ly as u16 + self.scy as u16) & 0xF8) << 2) as usize;
                             let tile_index = self.video_ram[0][bg_tile_map_index + tile_map_offset_x + tile_map_offset_y];
                             self.bg_fifo = self.tile_fetch_bg(tile_index);
+
+                            if self.lx == 0 {
+                                let offset = self.scx & 0b111;
+
+                                for _ in 0..offset {
+                                    self.bg_fifo.pop_front();
+                                }
+
+                                self.mode_3_penalty += offset;
+                            }
                         }
 
                         self.bg_fetch_state = 0;
