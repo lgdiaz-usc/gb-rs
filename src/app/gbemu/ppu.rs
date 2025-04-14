@@ -269,21 +269,56 @@ impl PPU {
                 }
 
                 if self.obj_fetch_state == 7 {
-                    //Fetch objects with the same x coordinate as the current pixel
-                    for index in 0..self.obj_buffer.len() {
-                        let object = self.obj_buffer[index];
-                        if self.object_attribute_memory[object as usize + 1] - 8 == self.lx {
-                            self.fetched_obj_address = object;
-                            self.obj_fetch_state = 0;
-                            self.bg_fetch_state = 0;
-                            self.mode_3_penalty += 6;
-                            self.obj_buffer.remove(index);
-                            break;
+                    let mut has_been_fetched = false;
+
+                    if self.lx == 0 {
+                        //Fetch objects with x coordinates that are slightly off screen to the left
+                        for offset in 0..8 {
+                            for index in 0..self.obj_buffer.len() {
+                                let object = self.obj_buffer[index];
+                                if self.object_attribute_memory[object as usize + 1] == offset {
+                                    self.fetched_obj_address = object;
+                                    self.obj_fetch_state = 0;
+                                    self.bg_fetch_state = 0;
+                                    self.mode_3_penalty += 6;
+                                    self.obj_buffer.remove(index);
+                                    has_been_fetched = true;
+                                    break;
+                                }
+                            }
+                            if has_been_fetched {
+                                break;
+                            }
+                        }
+                    } 
+
+                    if !has_been_fetched {
+                        //Fetch objects with the same x coordinate as the current pixel
+                        for index in 0..self.obj_buffer.len() {
+                            let object = self.obj_buffer[index];
+                            if self.object_attribute_memory[object as usize + 1] - 8 == self.lx {
+                                self.fetched_obj_address = object;
+                                self.obj_fetch_state = 0;
+                                self.bg_fetch_state = 0;
+                                self.mode_3_penalty += 6;
+                                self.obj_buffer.remove(index);
+                                break;
+                            }
                         }
                     }
                 }
                 else if self.obj_fetch_state == 5 {
                     let mut pixel_row = self.tile_fetch_obj(self.fetched_obj_address);
+
+                    if self.lx == 0 {
+                        let offset = 8 - self.object_attribute_memory[self.fetched_obj_address as usize + 1];
+
+                        for _ in 0..offset {
+                            pixel_row.pop_front();
+                        }
+
+                        self.mode_3_penalty += offset;
+                    }
                             
                     if !self.obj_fifo.is_empty() && pixel_row[0].tile == self.obj_fifo[0].tile {
                         self.mode_3_penalty += if self.obj_fifo.len() > 2 {self.obj_fifo.len() as u8 - 2} else {0};
