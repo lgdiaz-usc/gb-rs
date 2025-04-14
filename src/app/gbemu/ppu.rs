@@ -230,6 +230,18 @@ impl PPU {
                 let bg_tile_map_index = self.lcdc_3_bg_tile_map_area as usize;
                 let w_tile_map_index = self.lcdc_6_window_tile_map_area as usize;
 
+                if self.ly == self.wy {
+                    self.ly_eq_wy = true;
+                }
+                if !self.is_window_fetching_mode {
+                    self.is_window_fetching_mode = self.lcdc_5_window_enabled && self.ly_eq_wy && (self.lx + 7) >= self.wx;
+                    if self.is_window_fetching_mode {
+                        self.bg_fifo.clear();
+                        self.bg_fetch_state = 0;
+                    }
+                }
+
+                //Background/Window Fetching
                 if self.bg_fetch_state == 6 {
                     //every 8 pixels (after the initial pixels are pushed), fetch a new tile
                     if self.bg_fifo.is_empty() {
@@ -268,7 +280,8 @@ impl PPU {
                     self.bg_fetch_state += 1;
                 }
 
-                if self.obj_fetch_state == 7 {
+                //Object fetching
+                if self.obj_fetch_state == 7 { //Get Tile address
                     let mut has_been_fetched = false;
 
                     if self.lx == 0 {
@@ -307,7 +320,7 @@ impl PPU {
                         }
                     }
                 }
-                else if self.obj_fetch_state == 5 {
+                else if self.obj_fetch_state == 5 { //Fetch tile data
                     let mut pixel_row = self.tile_fetch_obj(self.fetched_obj_address);
 
                     if self.lx == 0 {
@@ -340,6 +353,7 @@ impl PPU {
                     self.bg_fetch_state = 0;
                 }
 
+                //End of cycle
                 if self.mode_3_penalty == 0 {
                     //Pixel Mixing
                     if !self.bg_fifo.is_empty() {
