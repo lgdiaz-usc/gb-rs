@@ -282,7 +282,7 @@ impl PPU {
                         }
                     }
                 }
-                else if self.obj_fetch_state == 6 {
+                else if self.obj_fetch_state == 5 {
                     let mut pixel_row = self.tile_fetch_obj(self.fetched_obj_address);
                             
                     if !self.obj_fifo.is_empty() && pixel_row[0].tile == self.obj_fifo[0].tile {
