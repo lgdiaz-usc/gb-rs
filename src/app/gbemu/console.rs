@@ -432,6 +432,9 @@ impl GBConsole {
         //If in VBLANK mode, set VBLANK flag
         if self.ppu.has_entered_vblank() {
             self.interrupt_flag |= 0b1;
+            if stat & 0b100000 != 0 {
+                self.interrupt_flag |= 0b10;
+            }
         }
 
         //Set STAT/LCD flag if STAT condition changes from false to true

@@ -85,7 +85,7 @@ impl PPU {
             screen: [[Pixel {color: 0, palette: None, bg_priority: None, tile: None}; 160]; 144],
             dot_counter: 0,
             mode_3_penalty: 0,
-            bg_fetch_state: 0,
+            bg_fetch_state: 250,
             obj_fetch_state: 7,
             fetched_obj_address: 0,
             lx: 0,
@@ -98,10 +98,20 @@ impl PPU {
 
     pub fn read(&self, address: u16) -> u8 {
         if address >= 0x8000 && address <= 0x9fff {
-            self.video_ram[self.video_ram_index][(address - 0x8000) as usize]
+            if self.ppu_mode != PPU_MODE_3_DRAW_PIXELS {
+                self.video_ram[self.video_ram_index][(address - 0x8000) as usize]
+            }
+            else {
+                0xFF
+            }
         }
         else if address >= 0xFE00 && address <= 0xFE9F {
-            self.object_attribute_memory[(address - 0xFE00) as usize]
+            if self.ppu_mode != PPU_MODE_2_OAM_SCAN && self.ppu_mode != PPU_MODE_3_DRAW_PIXELS {
+                self.object_attribute_memory[(address - 0xFE00) as usize]
+            }
+            else {
+                0xFF
+            }
         }
         else if address >= 0xFF00 && address <= 0xFF7F {
             //TODO: Implement PPU registers
@@ -325,7 +335,12 @@ impl PPU {
                             pixel_row.pop_front();
                         }
 
-                        self.mode_3_penalty += offset;
+                        if offset == 0 {
+                            self.mode_3_penalty += 5;
+                        }
+                        else {
+                            self.mode_3_penalty += offset;
+                        }
                     }
                             
                     else if !self.obj_fifo.is_empty() && pixel_row[0].tile == self.obj_fifo[0].tile {
@@ -403,7 +418,7 @@ impl PPU {
                 self.obj_buffer.clear();
                 self.bg_fifo.clear();
                 self.obj_fifo.clear();
-                self.bg_fetch_state = 250;
+                self.bg_fetch_state = 250; //-6 because the ppu does 2 tile fetches at the beginning of mode 3 and always discards the first
                 self.obj_fetch_state = 7;
             }
             else if self.dot_counter == 456 {
