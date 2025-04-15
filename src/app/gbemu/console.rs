@@ -169,7 +169,7 @@ impl GBConsole {
         else if address < 0xFF80 {
             //TODO: Implement I/O Registers
             match address {
-                0xFF00 => 0, //P1/JOYP
+                0xFF00 => 0xFF, //P1/JOYP
                 0xFF01 => self.serial_byte, //SB
                 0xFF02 => self.serial_control, //SC
                 0xFF04 => (self.system_counter >> 6).to_be_bytes()[1], //DIV
@@ -177,21 +177,21 @@ impl GBConsole {
                 0xFF06 => self.timer_modulo, //TMA
                 0xFF07 => self.timer_control, //TAC
                 0xFF0F => self.interrupt_flag, //IF
-                0xFF10..0xFF27 => 0, //Audio registers
-                0xFF30..0xFF40 => 0, //Waveform registers             
+                0xFF10..0xFF27 => 0xFF, //Audio registers
+                0xFF30..0xFF40 => 0xFF, //Waveform registers             
                 0xFF46 => self.dma, //DMA transfer source address 0xXX00 + dma_counter
                 0xFF47 => self.dmg_bg_pallette, //BGP
                 0xFF48 => self.dmg_obj_pallette_0, //OBP0
                 0xFF49 => self.dmg_obj_pallette_1, //OBP1
                 0xFF40..0xFF46 | 0xFF4A | 0xFF4B => self.ppu.read(address), //PPU Registers
-                0xFF4D => 0, //KEY1
-                0xFF4F => 0, //VBK
-                0xFF51..0xFF55 => 0, //HDMA1-4 (write only)
-                0xFF55 => 0, //HDMA5
-                0xFF56 => 0, //RP
-                0xFF68..0xFF6D => 0, //Other CGB registers
-                0xFF70 => 0, //SVBK
-                0xFF76 | 0xFF77 => 0, //CGB Audio registers
+                0xFF4D => 0xFF, //KEY1
+                0xFF4F => 0xFF, //VBK
+                0xFF51..0xFF55 => 0xFF, //HDMA1-4 (write only)
+                0xFF55 => 0xFF, //HDMA5
+                0xFF56 => 0xFF, //RP
+                0xFF68..0xFF6D => 0xFF, //Other CGB registers
+                0xFF70 => 0xFF, //SVBK
+                0xFF76 | 0xFF77 => 0xFF, //CGB Audio registers
                 _ => {
                     println!("ERROR: Unkown register at address ${:x}", address);
                     0
