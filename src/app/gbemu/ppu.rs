@@ -245,12 +245,7 @@ impl PPU {
                 if self.bg_fetch_state == 6 {
                     //every 8 pixels (after the initial pixels are pushed), fetch a new tile
                     if self.bg_fifo.is_empty() {
-                        if !self.lcdc_0_bg_window_enable {
-                            for _ in 0..8 {
-                                self.bg_fifo.push_back(Pixel { color: 0, palette: None, bg_priority: None, tile: None });
-                            }
-                        }
-                        else if self.is_window_fetching_mode {
+                        if self.is_window_fetching_mode {
                             let tile_map_offset_x = (self.w_lx >> 3) as usize;
                             let tile_map_offset_y = (((self.w_ly as u16) & 0xF8) << 2) as usize;
                             let tile_index = self.video_ram[0][w_tile_map_index + tile_map_offset_x + tile_map_offset_y];
@@ -333,7 +328,7 @@ impl PPU {
                         self.mode_3_penalty += offset;
                     }
                             
-                    if !self.obj_fifo.is_empty() && pixel_row[0].tile == self.obj_fifo[0].tile {
+                    else if !self.obj_fifo.is_empty() && pixel_row[0].tile == self.obj_fifo[0].tile {
                         self.mode_3_penalty += if self.obj_fifo.len() > 2 {self.obj_fifo.len() as u8 - 2} else {0};
                     }
                     
@@ -357,8 +352,11 @@ impl PPU {
                 if self.mode_3_penalty == 0 {
                     //Pixel Mixing
                     if !self.bg_fifo.is_empty() {
-                        let bg_pixel = self.bg_fifo.pop_front().unwrap();
+                        let mut bg_pixel = self.bg_fifo.pop_front().unwrap();
                         let obj_pixel = self.obj_fifo.pop_front();
+                        if !self.lcdc_0_bg_window_enable {
+                            bg_pixel = Pixel { color: 0, palette: None, bg_priority: None, tile: None }
+                        }
                         self.screen[self.ly as usize][self.lx as usize] = match obj_pixel {
                             Some(obj_pixel) => {
                                 if !self.lcdc_1_obj_enable {
@@ -405,6 +403,8 @@ impl PPU {
                 self.obj_buffer.clear();
                 self.bg_fifo.clear();
                 self.obj_fifo.clear();
+                self.bg_fetch_state = 250;
+                self.obj_fetch_state = 7;
             }
             else if self.dot_counter == 456 {
                 self.dot_counter = 0;
