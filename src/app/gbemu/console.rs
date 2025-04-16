@@ -311,8 +311,14 @@ impl GBConsole {
                     self.dma = if value < 0xDf {value} else {0xDF};
                     return;
                 }
-                0xFF10..0xFF27 => return, //Sound registers
-                0xFF30..0xFF40 => return, //Waveform registers
+                0xFF10..0xFF27 => { //Sound registers
+                    self.apu.write(address, value);
+                    return;
+                },
+                0xFF30..0xFF40 => { //Waveform registers
+                    self.apu.write(address, value);
+                    return;
+                },
                 0xFF47 => &mut self.dmg_bg_pallette, //BGP
                 0xFF48 => &mut self.dmg_obj_pallette_0, //OBP0
                 0xFF49 => &mut self.dmg_obj_pallette_1, //OBP1
