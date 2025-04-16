@@ -179,8 +179,8 @@ impl GBConsole {
                 0xFF06 => self.timer_modulo, //TMA
                 0xFF07 => self.timer_control, //TAC
                 0xFF0F => self.interrupt_flag, //IF
-                0xFF10..0xFF27 => 0xFF, //Audio registers
-                0xFF30..0xFF40 => 0xFF, //Waveform registers             
+                0xFF10..0xFF27 => self.apu.read(address), //Audio registers
+                0xFF30..0xFF40 => self.apu.read(address), //Waveform RAM             
                 0xFF46 => self.dma, //DMA transfer source address 0xXX00 + dma_counter
                 0xFF47 => self.dmg_bg_pallette, //BGP
                 0xFF48 => self.dmg_obj_pallette_0, //OBP0

@@ -61,4 +61,42 @@ impl APU {
             wave_ram: [0; 16],
         }
     }
+
+    pub fn read(&self, address: u16) -> u8 {
+        if address >= 0xFF10 && address <= 0xFF26 {
+            match address {
+                0xFF10 => self.ch_1_0_sweep,
+                0xFF11 => self.ch_1_1_length | 0b111111,
+                0xFF12 => self.ch_1_2_volume,
+                0xFF13 => 0x00,
+                0xFF14 => self.ch_1_4_high | 0b10111111,
+                0xFF16 => self.ch_2_1_length | 0b111111,
+                0xFF17 => self.ch_2_2_volume,
+                0xFF18 => 0x00,
+                0xFF19 => self.ch_2_4_high | 0b10111111,
+                0xFF1A => self.ch_3_0_enable,
+                0xFF1B => 0xFF,
+                0xFF1C => self.ch_3_2_volume,
+                0xFF1D => 0xFF,
+                0xFF1E => self.ch_3_4_high | 0b10111111,
+                0xFF20 => 0xFF,
+                0xFF21 => self.ch_4_2_volume,
+                0xFF22 => self.ch_4_3_freq,
+                0xFF23 => self.ch_4_4_control | 0b10111111,
+                0xFF24 => self.ch_5_0_volume,
+                0xFF25 => self.ch_5_1_panning,
+                0xFF26 => self.ch_5_2_enable,
+                _ => {
+                    println!("ERROR: Unknown register ${:x}", address);
+                    0xFF
+                }
+            }
+        }
+        else if address >= 0xFF30 && address <= 0xFF3F {
+            self.wave_ram[(address - 0xFF30) as usize]
+        }
+        else {
+            panic!("ERROR: Address ${:x} out of bounds!", address)
+        }
+    }
 }
