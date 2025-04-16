@@ -32,6 +32,9 @@ pub struct APU {
 
     //Wave RAM
     wave_ram: [u8; 16],
+
+    //Timer for the APU
+    apu_counter: u16, //DIV-APU
 }
 
 impl APU {
@@ -59,6 +62,7 @@ impl APU {
             ch_5_1_panning: 0xF3,
             ch_5_2_enable: 0xF1,
             wave_ram: [0; 16],
+            apu_counter: 0,
         }
     }
 
@@ -163,5 +167,11 @@ impl APU {
         else {
             panic!("ERROR: Address ${:x} out of bounds!", address)
         }
+    }
+
+    pub fn update_apu_timer(&mut self) {
+        self.apu_counter += 1;
+
+        //TODO: Implement events that occur every N DIV-APU ticks
     }
 }

@@ -514,6 +514,18 @@ impl GBConsole {
                 self.timer_overflowed = true;
             }
         }
+
+        let will_update_apu;
+        //if dmg
+        {
+            will_update_apu = (system_counter_before & 0x20 != 0) 
+                              && (self.system_counter & 0x20 == 0);
+        } 
+        //TODO turn above into an if statement and add else clause for CGB behavior
+
+        if will_update_apu {
+            self.apu.update_apu_timer();
+        }
     }
     
     pub fn dump_screen(&self) -> &[[Pixel; 160]; 144] {
