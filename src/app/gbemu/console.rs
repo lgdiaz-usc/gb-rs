@@ -2,7 +2,7 @@ use std::{fs::File, io::Bytes};
 
 use crate::{app::cartridge_info::CartridgeInfo, mappers::{Mapper, NoMBC, MBC1}};
 
-use super::ppu::{self, Pixel, PPU};
+use super::{apu::{self, APU}, ppu::{self, Pixel, PPU}};
 
 pub struct GBConsole {
     //CPU Registers
@@ -57,7 +57,8 @@ pub struct GBConsole {
     pub is_halted: bool,
 
     //External objects
-    ppu: PPU
+    ppu: PPU,
+    apu: APU,
 }
 
 const Z_ZERO_FLAG: u8 = 128;
@@ -119,6 +120,7 @@ impl GBConsole {
             dma_counter: 0xA0 << 2,
             is_halted: false,
             ppu: ppu::PPU::new(),
+            apu: apu::APU::new(),
         }
     }
 
@@ -194,7 +196,7 @@ impl GBConsole {
                 0xFF76 | 0xFF77 => 0xFF, //CGB Audio registers
                 _ => {
                     println!("ERROR: Unkown register at address ${:x}", address);
-                    0
+                    0xFF
                 }
             }
         }

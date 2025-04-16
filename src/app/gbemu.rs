@@ -7,6 +7,7 @@ use super::cartridge_info::CartridgeInfo;
 
 mod console;
 mod ppu;
+mod apu;
 
 #[derive(Clone)]
 pub struct GBEmu {
@@ -95,7 +96,7 @@ impl GBEmu {
         let speed_factor = 1;
         //let fps = 4.0;
         let cycle_time = Duration::from_nanos((4000_f64 / clock_speed).round() as u64 * speed_factor);
-        let mut _next_cycle = Instant::now() + cycle_time;
+        let mut next_cycle = Instant::now() + cycle_time;
 
         let mut cpu_delay = 255;
         '_Frame: loop {
@@ -127,8 +128,8 @@ impl GBEmu {
                     }
 
                     //Wait until next m_cycle
-                    /*thread::sleep(next_cycle - Instant::now());
-                    next_cycle += cycle_time;*/
+                    thread::sleep(next_cycle - Instant::now());
+                    next_cycle += cycle_time;
                 }
             }
 
