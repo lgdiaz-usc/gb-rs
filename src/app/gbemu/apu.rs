@@ -1,3 +1,5 @@
+use cpal::{traits::{DeviceTrait, HostTrait, StreamTrait}, FromSample, Sample, SizedSample};
+
 pub struct APU {
     //Channel 1 registers
     ch_1_0_sweep: u8,   //NR10
@@ -197,6 +199,68 @@ impl APU {
         }
         else {
             panic!("ERROR: Address ${:x} out of bounds!", address)
+        }
+    }
+
+    pub fn init_device(&self) {
+        let host = cpal::default_host();
+        let device = host.default_output_device().expect("ERROR: failed to find output device");
+        let config = device.default_output_config().unwrap();
+
+        match config.sample_format() {
+            cpal::SampleFormat::I8 => self.run::<i8>(&device, &config.into()),
+            cpal::SampleFormat::I16 => self.run::<i16>(&device, &config.into()),
+            //cpal::SampleFormat::I24 => self.run::<I24>(&device, &config.into()),
+            cpal::SampleFormat::I32 => self.run::<i32>(&device, &config.into()),
+            //cpal::SampleFormat::I48 => self.run::<I48>(&device, &config.into()),
+            cpal::SampleFormat::I64 => self.run::<i64>(&device, &config.into()),
+            cpal::SampleFormat::U8 => self.run::<u8>(&device, &config.into()),
+            cpal::SampleFormat::U16 => self.run::<u16>(&device, &config.into()),
+            //cpal::SampleFormat::U24 => self.run::<U24>(&device, &config.into()),
+            cpal::SampleFormat::U32 => self.run::<u32>(&device, &config.into()),
+            //cpal::SampleFormat::U48 => self.run::<U48>(&device, &config.into()),
+            cpal::SampleFormat::U64 => self.run::<u64>(&device, &config.into()),
+            cpal::SampleFormat::F32 => self.run::<f32>(&device, &config.into()),
+            cpal::SampleFormat::F64 => self.run::<f64>(&device, &config.into()),
+            sample_format => panic!("Unsupported sample format '{sample_format}'"),
+        }
+    }
+
+    fn run<T>(&self, device: &cpal::Device, config: &cpal::StreamConfig)
+    where 
+        T: SizedSample + FromSample<f32>,
+    {
+        let sample_rate = config.sample_rate.0 as f32;
+        let channels = config.channels as usize;
+
+        let mut sample_clock = 0.0;
+        let mut next_value = move || {
+            sample_clock = (sample_clock + 1.0) % sample_rate;
+            (sample_clock * 440.0 * 2.0 * std::f32::consts::PI / sample_rate).sin() + self.ch_1_0_sweep as f32
+        };
+
+        let err_fn = |err| eprintln!("An error occurred on stream: {}", err);
+
+        let stream = device.build_output_stream(
+            config,
+            move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+                self.write_data(data, channels, &mut next_value)
+            },
+            err_fn,
+            None,
+        ).unwrap();
+        stream.play().unwrap();
+    }
+
+    fn write_data<T>(&self, output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> f32)
+    where
+        T: Sample + FromSample<f32>,
+    {
+        for frame in output.chunks_mut(channels) {
+            let value: T = T::from_sample(next_sample());
+            for sample in frame.iter_mut() {
+                *sample = value;
+            }
         }
     }
 
