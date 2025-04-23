@@ -1,3 +1,5 @@
+use std::{sync::mpsc::{channel, Receiver, Sender}, thread};
+
 use cpal::{traits::{DeviceTrait, HostTrait, StreamTrait}, FromSample, Sample, SizedSample};
 
 pub struct APU {
@@ -37,10 +39,20 @@ pub struct APU {
 
     //Timer for the APU
     apu_counter: u16, //DIV-APU
+
+    //Variables for sending data to audio library
+    sample_data: SampleData,
+    sender: Sender<SampleData>,
 }
 
 impl APU {
     pub fn new() -> Self {
+        let (sender, receiver) = channel();
+
+        thread::spawn(move || {
+            Self::init_device(receiver);
+        });
+
         Self {
             ch_1_0_sweep: 0x80,
             ch_1_1_length: 0xBF,
@@ -65,6 +77,8 @@ impl APU {
             ch_5_2_enable: 0xF1,
             wave_ram: [0; 16],
             apu_counter: 0,
+            sample_data: SampleData::default(),
+            sender
         }
     }
 
@@ -202,41 +216,48 @@ impl APU {
         }
     }
 
-    pub fn init_device(&self) {
+    pub fn init_device(receiver: Receiver<SampleData>) {
         let host = cpal::default_host();
         let device = host.default_output_device().expect("ERROR: failed to find output device");
         let config = device.default_output_config().unwrap();
 
         match config.sample_format() {
-            cpal::SampleFormat::I8 => self.run::<i8>(&device, &config.into()),
-            cpal::SampleFormat::I16 => self.run::<i16>(&device, &config.into()),
-            //cpal::SampleFormat::I24 => self.run::<I24>(&device, &config.into()),
-            cpal::SampleFormat::I32 => self.run::<i32>(&device, &config.into()),
-            //cpal::SampleFormat::I48 => self.run::<I48>(&device, &config.into()),
-            cpal::SampleFormat::I64 => self.run::<i64>(&device, &config.into()),
-            cpal::SampleFormat::U8 => self.run::<u8>(&device, &config.into()),
-            cpal::SampleFormat::U16 => self.run::<u16>(&device, &config.into()),
-            //cpal::SampleFormat::U24 => self.run::<U24>(&device, &config.into()),
-            cpal::SampleFormat::U32 => self.run::<u32>(&device, &config.into()),
-            //cpal::SampleFormat::U48 => self.run::<U48>(&device, &config.into()),
-            cpal::SampleFormat::U64 => self.run::<u64>(&device, &config.into()),
-            cpal::SampleFormat::F32 => self.run::<f32>(&device, &config.into()),
-            cpal::SampleFormat::F64 => self.run::<f64>(&device, &config.into()),
+            cpal::SampleFormat::I8 => Self::run::<i8>(receiver, &device, &config.into()),
+            cpal::SampleFormat::I16 => Self::run::<i16>(receiver, &device, &config.into()),
+            //cpal::SampleFormat::I24 => Self::run::<I24>(receiver, &device, &config.into()),
+            cpal::SampleFormat::I32 => Self::run::<i32>(receiver, &device, &config.into()),
+            //cpal::SampleFormat::I48 => Self::run::<I48>(receiver, &device, &config.into()),
+            cpal::SampleFormat::I64 => Self::run::<i64>(receiver, &device, &config.into()),
+            cpal::SampleFormat::U8 => Self::run::<u8>(receiver, &device, &config.into()),
+            cpal::SampleFormat::U16 => Self::run::<u16>(receiver, &device, &config.into()),
+            //cpal::SampleFormat::U24 => Self::run::<U24>(receiver, &device, &config.into()),
+            cpal::SampleFormat::U32 => Self::run::<u32>(receiver, &device, &config.into()),
+            //cpal::SampleFormat::U48 => Self::run::<U48>(receiver, &device, &config.into()),
+            cpal::SampleFormat::U64 => Self::run::<u64>(receiver, &device, &config.into()),
+            cpal::SampleFormat::F32 => Self::run::<f32>(receiver, &device, &config.into()),
+            cpal::SampleFormat::F64 => Self::run::<f64>(receiver, &device, &config.into()),
             sample_format => panic!("Unsupported sample format '{sample_format}'"),
         }
     }
 
-    fn run<T>(&self, device: &cpal::Device, config: &cpal::StreamConfig)
+    fn run<T>(receiver: Receiver<SampleData>,device: &cpal::Device, config: &cpal::StreamConfig)
     where 
         T: SizedSample + FromSample<f32>,
     {
         let sample_rate = config.sample_rate.0 as f32;
         let channels = config.channels as usize;
 
+        let mut current_sample_data = SampleData::default();
+
         let mut sample_clock = 0.0;
         let mut next_value = move || {
+            if let Ok(data) = receiver.try_recv() {
+                current_sample_data = data;
+            }
+
             sample_clock = (sample_clock + 1.0) % sample_rate;
-            (sample_clock * 440.0 * 2.0 * std::f32::consts::PI / sample_rate).sin() + self.ch_1_0_sweep as f32
+
+            (sample_clock * 440.0 * 2.0 * current_sample_data.test * std::f32::consts::PI / sample_rate).sin()
         };
 
         let err_fn = |err| eprintln!("An error occurred on stream: {}", err);
@@ -244,15 +265,17 @@ impl APU {
         let stream = device.build_output_stream(
             config,
             move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-                self.write_data(data, channels, &mut next_value)
+                Self::write_data(data, channels, &mut next_value)
             },
             err_fn,
             None,
         ).unwrap();
         stream.play().unwrap();
+
+        loop {}
     }
 
-    fn write_data<T>(&self, output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> f32)
+    fn write_data<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> f32)
     where
         T: Sample + FromSample<f32>,
     {
@@ -268,5 +291,18 @@ impl APU {
         self.apu_counter += 1;
 
         //TODO: Implement events that occur every N DIV-APU ticks
+    }
+}
+
+#[derive(Clone,Copy)]
+pub struct SampleData {
+    test: f32
+}
+
+impl Default for SampleData {
+    fn default() -> Self {
+        Self { 
+            test: 0.5
+        }
     }
 }
