@@ -32,13 +32,33 @@ pub struct APU {
     //Master control registers
     ch_5_0_volume: u8,   //NR50
     ch_5_1_panning: u8,  //NR51
-    ch_5_2_enable: u8,   //NR52
+    ch_5_2_enable: bool,   //NR52
+
+    //Channel Enable flags
+    ch_1_enable: bool,
+    ch_2_enable: bool,
+    ch_3_enable: bool,
+    ch_4_enable: bool,
+
+    //DAC Enable falgs
+    dac_1_enable: bool,
+    dac_2_enable: bool,
+    dac_3_enable: bool,
+    dac_4_enable: bool,
 
     //Wave RAM
     wave_ram: [u8; 16],
 
     //Timer for the APU
     apu_counter: u16, //DIV-APU
+
+    //Internal APU registers
+    //Channel 2
+    ch_2_duty_counter: u8,
+    ch_2_period_counter: u16,
+    ch_2_length_counter: u8,
+    ch_2_envelope_counter: u8,
+    ch_2_volume: u8,
 
     //Variables for sending data to audio library
     sample_data: SampleData,
@@ -74,8 +94,21 @@ impl APU {
             ch_4_4_length_enable: true,
             ch_5_0_volume: 0x77,
             ch_5_1_panning: 0xF3,
-            ch_5_2_enable: 0xF1,
+            ch_5_2_enable: true,
             wave_ram: [0; 16],
+            ch_1_enable: false,
+            ch_2_enable: false,
+            ch_3_enable: false,
+            ch_4_enable: false,
+            dac_1_enable: false,
+            dac_2_enable: false,
+            dac_3_enable: false,
+            dac_4_enable: false,
+            ch_2_duty_counter: 0,
+            ch_2_envelope_counter: 0,
+            ch_2_length_counter: 0,
+            ch_2_period_counter: 0,
+            ch_2_volume: 0,
             apu_counter: 0,
             sample_data: SampleData::default(),
             sender
@@ -105,7 +138,25 @@ impl APU {
                 0xFF23 => if self.ch_4_4_length_enable {0xFF} else {0xBF},
                 0xFF24 => self.ch_5_0_volume,
                 0xFF25 => self.ch_5_1_panning,
-                0xFF26 => self.ch_5_2_enable,
+                0xFF26 => {
+                    let mut value = 0b1110000;
+                    if self.ch_5_2_enable {
+                        value |= 0b10000000;
+                    }
+                    if self.ch_4_enable {
+                        value |= 0b1000;
+                    }
+                    if self.ch_3_enable {
+                        value |= 0b100;
+                    }
+                    if self.ch_2_enable {
+                        value |= 0b10;
+                    }
+                    if self.ch_1_enable {
+                        value |= 0b1
+                    }
+                    value
+                },
                 _ => {
                     println!("ERROR: Unknown register ${:x}", address);
                     0xFF
@@ -144,8 +195,14 @@ impl APU {
                     self.ch_1_3_period = (self.ch_1_3_period & 0x00FF) | ((value as u16 & 0b111) << 8);
                     return;
                 },
+
                 0xFF16 => &mut self.ch_2_1_length,
-                0xFF17 => &mut self.ch_2_2_volume,
+                0xFF17 => {
+                    self.dac_2_enable = value & 0xF8 != 0;
+                    self.ch_2_enable = self.dac_2_enable;
+
+                    &mut self.ch_2_2_volume
+                },
                 0xFF18 => {
                     self.ch_2_3_period &= 0xFF00;
                     self.ch_2_3_period |= value as u16;
@@ -154,12 +211,18 @@ impl APU {
                 0xFF19 => {
                     if value & 0x80 != 0 {
                         //TODO: code for triggering channel 2
+                        self.ch_2_enable = true;
+                        self.ch_2_length_counter = self.ch_2_1_length & 0x3F;
+                        self.ch_2_period_counter = self.ch_2_3_period;
+                        self.ch_2_envelope_counter = 0;
+                        self.ch_2_volume = self.ch_2_2_volume >> 4;
                     }
 
                     self.ch_2_4_length_enable = value & 0x40 != 0;
                     self.ch_2_3_period = (self.ch_2_3_period & 0x00FF) | ((value as u16 & 0b111) << 8);
                     return;
                 },
+
                 0xFF1A => {
                     self.ch_3_0_enable = value & 0x80 != 0;
                     return;
@@ -183,6 +246,7 @@ impl APU {
                     self.ch_3_3_period = (self.ch_3_3_period & 0x00FF) | ((value as u16 & 0b111) << 8);
                     return;
                 },
+
                 0xFF20 => {
                     value |= 0b11000000;
                     &mut self.ch_4_1_length
@@ -197,11 +261,12 @@ impl APU {
                     self.ch_4_4_length_enable = value & 0x40 != 0;
                     return;
                 },
+                
                 0xFF24 => &mut self.ch_5_0_volume,
                 0xFF25 => &mut self.ch_5_1_panning,
                 0xFF26 => {
-                    value |= 0b1111111;
-                    &mut self.ch_5_2_enable
+                    self.ch_5_2_enable = value & 0x80 != 0;
+                    return;
                 },
                 _ => panic!("ERROR: Unknown register ${:x}", address)
             };
