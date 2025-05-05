@@ -230,6 +230,18 @@ impl APU {
 
         let mut ch_2_sample_ratio = 0.0;
 
+        let mut capacitor = 0.0;
+        let charge_factor = 0.999958_f32.powf(4194304.0 / sample_rate);
+        let mut high_pass_filter = move |input: f32, enabled: bool| -> f32 {
+            let mut output = 0.0;
+            if enabled {
+                output = input - capacitor;
+                capacitor = input - output * charge_factor;
+            }
+
+            output
+        };
+
         let mut sample_clock = 0.0;
         let mut next_value = move || {
             if let Ok(data) = receiver.try_recv() {
@@ -239,7 +251,7 @@ impl APU {
                 }
                 else {
                     sample_rate / current_sample_data.ch_2_freq
-                }
+                };
             }
 
             sample_clock = (sample_clock + 1.0) % sample_rate;
@@ -252,6 +264,8 @@ impl APU {
             mixed_sample += if (sample_clock % ch_2_sample_ratio) / ch_2_sample_ratio <= current_sample_data.ch_2_duty {current_sample_data.ch_2_amp} else {0.0};
 
             //TODO: implement Stereo, master volume, and HPF
+            mixed_sample = high_pass_filter(mixed_sample, true);
+
             mixed_sample
         };
 
@@ -373,7 +387,7 @@ impl APU {
 
 fn digital_to_analog(digital: u8) -> f32 {
     let digital = (digital & 0x0F) as f32;
-    ((2.0 / 15.0) * digital - 1.0)
+    (2.0 / 15.0) * digital - 1.0
 }
 
 #[derive(Clone,Copy)]
