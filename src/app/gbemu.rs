@@ -125,11 +125,14 @@ impl GBEmu {
                         if let Some(serial_output) = console.check_serial() {
                             console_output.push((serial_output as char).to_ascii_uppercase());
                         }
+                        console.update_apu();
                     }
 
                     //Wait until next m_cycle
                     thread::sleep(next_cycle - Instant::now());
                     next_cycle += cycle_time;
+
+                    
                 }
             }
 

@@ -452,6 +452,10 @@ impl GBConsole {
         
     }
 
+    pub fn update_apu(&mut self) {
+        self.apu.update_apu();
+    }
+
     pub fn check_serial(&mut self) -> Option<u8> {
         let mut transferred_byte = None;
 
