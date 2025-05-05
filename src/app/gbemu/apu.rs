@@ -296,10 +296,10 @@ impl APU {
         if will_update_envelope && self.ch_2_sweep_pace != 0 {
             self.ch_2_envelope_counter += 1;
             if self.ch_2_envelope_counter == self.ch_2_sweep_pace {
-                if self.ch_2_envelope_increases {
+                if self.ch_2_envelope_increases && self.ch_2_volume < 0xF {
                     self.ch_2_volume += 1;
                 }
-                else {
+                else if !self.ch_2_envelope_increases && self.ch_2_volume > 0x0 {
                     self.ch_2_volume -= 1;
                 }
                 self.sample_data.ch_2_amp = digital_to_analog(self.ch_2_2_volume);
@@ -373,7 +373,7 @@ impl APU {
 
 fn digital_to_analog(digital: u8) -> f32 {
     let digital = (digital & 0x0F) as f32;
-    ((2.0 / 15.0) * digital - 1.0) / 4.0
+    ((2.0 / 15.0) * digital - 1.0)
 }
 
 #[derive(Clone,Copy)]
