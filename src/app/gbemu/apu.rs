@@ -6,6 +6,12 @@ const T_CYCLE_RATE: f32 = 4194304.0;
 const M_CYCLE_RATE: f32 = 1048576.0;
 
 pub struct APU {
+    //Channel 1 registers
+    ch_1_1_length: u8,   //NR11
+    ch_1_2_volume: u8,   //NR12
+    ch_1_3_period: u16,      //NR13
+    ch_1_4_length_enable: bool,     //NR14
+
     //Channel 2 registers
     ch_2_1_length: u8,   //NR21
     ch_2_2_volume: u8,   //NR22
@@ -24,6 +30,7 @@ pub struct APU {
     ch_4_enable: bool,
 
     //DAC Enable falgs
+    dac_1_enable: bool,
     dac_2_enable: bool,
 
     //Wave RAM
@@ -33,6 +40,15 @@ pub struct APU {
     apu_counter: u16, //DIV-APU
 
     //Internal APU registers
+    //Channel 1
+    ch_1_duty_counter: u8,
+    ch_1_period_counter: u16,
+    ch_1_length_counter: u8,
+    ch_1_envelope_counter: u8,
+    ch_1_envelope_increases: bool,
+    ch_1_sweep_pace: u8,
+    ch_1_volume: u8,
+
     //Channel 2
     ch_2_duty_counter: u8,
     ch_2_period_counter: u16,
@@ -68,6 +84,10 @@ impl APU {
         let sample_rate = sample_receive.recv().unwrap();
 
         Self {
+            ch_1_1_length: 0x3F,
+            ch_1_2_volume: 0x00,
+            ch_1_3_period: 0x0000,
+            ch_1_4_length_enable: true,
             ch_2_1_length: 0x3F,
             ch_2_2_volume: 0x00,
             ch_2_3_period: 0x0000,
@@ -80,7 +100,15 @@ impl APU {
             ch_2_enable: false,
             ch_3_enable: false,
             ch_4_enable: false,
+            dac_1_enable: false,
             dac_2_enable: false,
+            ch_1_duty_counter: 0,
+            ch_1_envelope_counter: 0,
+            ch_1_envelope_increases: false,
+            ch_1_sweep_pace: 0,
+            ch_1_length_counter: 0,
+            ch_1_period_counter: 0,
+            ch_1_volume: 0,
             ch_2_duty_counter: 0,
             ch_2_envelope_counter: 0,
             ch_2_envelope_increases: false,
@@ -102,13 +130,19 @@ impl APU {
     pub fn read(&self, address: u16) -> u8 {
         if address >= 0xFF10 && address <= 0xFF26 {
             match address {
-                0xFF16 => self.ch_2_1_length | 0b111111,
-                0xFF17 => self.ch_2_2_volume,
-                0xFF18 => 0xFF,
-                0xFF19 => if self.ch_2_4_length_enable {0xFF} else {0xBF},
-                0xFF24 => self.ch_5_0_volume,
-                0xFF25 => self.ch_5_1_panning,
-                0xFF26 => {
+                0xFF11 => self.ch_1_1_length | 0b111111, //NR11
+                0xFF12 => self.ch_1_2_volume, //NR12
+                0xFF13 => 0xFF, //NR13
+                0xFF14 => if self.ch_1_4_length_enable {0xFF} else {0xBF}, //NR14
+
+                0xFF16 => self.ch_2_1_length | 0b111111, //NR21
+                0xFF17 => self.ch_2_2_volume, //NR22
+                0xFF18 => 0xFF, //NR23
+                0xFF19 => if self.ch_2_4_length_enable {0xFF} else {0xBF}, //NR24
+
+                0xFF24 => self.ch_5_0_volume, //NR50
+                0xFF25 => self.ch_5_1_panning, //NR 51
+                0xFF26 => { //NR52
                     let mut value = 0b1110000;
                     if self.ch_5_2_enable {
                         value |= 0b10000000;
@@ -145,8 +179,41 @@ impl APU {
         if address >= 0xFF10 && address <= 0xFF26 {
             //let mut value = value;
             let register = match address {
-                0xFF16 => &mut self.ch_2_1_length,
-                0xFF17 => {
+                0xFF11 => &mut self.ch_1_1_length, //NR11
+                0xFF12 => { //NR12
+                    self.dac_1_enable = value & 0xF8 != 0;
+                    if !self.dac_1_enable {
+                        self.disable_ch_1();
+                    }
+
+                    &mut self.ch_1_2_volume
+                },
+                0xFF13 => { //NR13
+                    self.ch_1_3_period &= 0xFF00;
+                    self.ch_1_3_period |= value as u16;
+                    return;
+                },
+                0xFF14 => { //NR14
+                    if value & 0x80 != 0 {
+                        //TODO: code for triggering channel 2
+                        self.ch_1_enable = true;
+                        if self.ch_1_length_counter == 64 {
+                            self.ch_1_length_counter = self.ch_1_1_length & 0x3F;
+                        }
+                        self.ch_1_period_counter = 0x7FF;
+                        self.ch_1_envelope_counter = 0;
+                        self.ch_1_volume = self.ch_1_2_volume >> 4;
+                        self.ch_1_envelope_increases = self.ch_1_2_volume & 0b1000 != 0;
+                        self.ch_1_sweep_pace = self.ch_1_2_volume & 0b111;
+                    }
+
+                    self.ch_1_4_length_enable = value & 0x40 != 0;
+                    self.ch_1_3_period = (self.ch_1_3_period & 0x00FF) | ((value as u16 & 0b111) << 8);
+                    return;
+                },
+
+                0xFF16 => &mut self.ch_2_1_length, //NR21
+                0xFF17 => { //NR22
                     self.dac_2_enable = value & 0xF8 != 0;
                     if !self.dac_2_enable {
                         self.disable_ch_2();
@@ -154,12 +221,12 @@ impl APU {
 
                     &mut self.ch_2_2_volume
                 },
-                0xFF18 => {
+                0xFF18 => { //NR23
                     self.ch_2_3_period &= 0xFF00;
                     self.ch_2_3_period |= value as u16;
                     return;
                 },
-                0xFF19 => {
+                0xFF19 => { //NR24
                     if value & 0x80 != 0 {
                         //TODO: code for triggering channel 2
                         self.ch_2_enable = true;
@@ -178,9 +245,9 @@ impl APU {
                     return;
                 },
 
-                0xFF24 => &mut self.ch_5_0_volume,
-                0xFF25 => &mut self.ch_5_1_panning,
-                0xFF26 => {
+                0xFF24 => &mut self.ch_5_0_volume, //NR50
+                0xFF25 => &mut self.ch_5_1_panning, //NR51
+                0xFF26 => { //NR52
                     self.ch_5_2_enable = value & 0x80 != 0;
                     if !self.ch_5_2_enable {
                         //TODO: Disable other channels
@@ -202,6 +269,14 @@ impl APU {
         else {
             panic!("ERROR: Address ${:x} out of bounds!", address)
         }
+    }
+
+    fn disable_ch_1(&mut self) {
+        self.ch_1_enable = false;
+        self.ch_1_envelope_counter = 0;
+        self.ch_1_length_counter = 0;
+        self.ch_1_period_counter = 0;
+        self.ch_1_volume = 0;
     }
 
     fn disable_ch_2(&mut self) {
@@ -310,21 +385,41 @@ impl APU {
             let state_after = self.apu_counter & 0b100 != 0;
             will_update_envelope = state_before && !state_after;
         }
-        if will_update_envelope && self.ch_2_sweep_pace != 0 {
-            self.ch_2_envelope_counter += 1;
-            if self.ch_2_envelope_counter == self.ch_2_sweep_pace {
-                if self.ch_2_envelope_increases && self.ch_2_volume < 0xF {
-                    self.ch_2_volume += 1;
-                }
-                else if !self.ch_2_envelope_increases && self.ch_2_volume > 0x0 {
-                    self.ch_2_volume -= 1;
-                }
+        if will_update_envelope {
+            if self.ch_1_sweep_pace != 0 {
+                self.ch_1_envelope_counter += 1;
+                if self.ch_1_envelope_counter == self.ch_1_sweep_pace {
+                    if self.ch_1_envelope_increases && self.ch_1_volume < 0xF {
+                        self.ch_1_volume += 1;
+                    }
+                    else if !self.ch_1_envelope_increases && self.ch_1_volume > 0x0 {
+                        self.ch_1_volume -= 1;
+                    }
+                    
+                    if self.dac_1_signal != 0.0 {
+                        self.dac_1_signal = volume_to_analog(self.ch_1_volume);
+                    }
                 
-                if self.dac_2_signal != 0.0 {
-                    self.dac_2_signal = volume_to_analog(self.ch_2_volume);
+                    self.ch_1_envelope_counter = 0;
                 }
+            }
 
-                self.ch_2_envelope_counter = 0;
+            if self.ch_2_sweep_pace != 0 {
+                self.ch_2_envelope_counter += 1;
+                if self.ch_2_envelope_counter == self.ch_2_sweep_pace {
+                    if self.ch_2_envelope_increases && self.ch_2_volume < 0xF {
+                        self.ch_2_volume += 1;
+                    }
+                    else if !self.ch_2_envelope_increases && self.ch_2_volume > 0x0 {
+                        self.ch_2_volume -= 1;
+                    }
+
+                    if self.dac_2_signal != 0.0 {
+                        self.dac_2_signal = volume_to_analog(self.ch_2_volume);
+                    }
+
+                    self.ch_2_envelope_counter = 0;
+                }
             }
         }
 
@@ -335,6 +430,13 @@ impl APU {
             will_update_length_timer = state_before && !state_after;
         }
         if will_update_length_timer {
+            if self.ch_1_4_length_enable && self.ch_1_length_counter < 64 {
+                self.ch_1_length_counter += 1;
+                if self.ch_1_length_counter == 64 {
+                    self.disable_ch_1();
+                }
+            }
+
             if self.ch_2_4_length_enable && self.ch_2_length_counter < 64 {
                 self.ch_2_length_counter += 1;
                 if self.ch_2_length_counter == 64 {
@@ -347,6 +449,35 @@ impl APU {
 
     pub fn update_apu(&mut self) {
         if self.ch_5_2_enable {
+            if self.dac_1_enable {
+                if self.ch_1_enable {
+                    const DUTY_VALUES: [[f32; 8]; 4] = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+                                                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0],
+                                                        [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+                                                        [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0]];
+
+                    if self.ch_1_period_counter == 0x7FF {
+                        self.ch_1_period_counter = self.ch_1_3_period;
+
+                        //Clock the duty step counter
+                        self.ch_1_duty_counter += 1;
+
+                        let duty_cycle = (self.ch_1_1_length >> 6) as usize;
+                        let duty_step = (self.ch_1_duty_counter & 0b111) as usize;
+
+                        self.dac_1_signal = DUTY_VALUES[duty_cycle][duty_step] * volume_to_analog(self.ch_1_volume);
+                        //println!("f: {frequency}, d: {duty_cycle}, v: {}", self.sample_data.ch_2_amp);
+                    }
+                    else {
+                        self.ch_1_period_counter += 1;
+                    }
+                }
+                else {
+                    //if the channel is disabled, channel emits a digital 0 (analog -1)
+                    //0.0
+                };
+            }
+
             if self.dac_2_enable {
                 if self.ch_2_enable {
                     const DUTY_VALUES: [[f32; 8]; 4] = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
