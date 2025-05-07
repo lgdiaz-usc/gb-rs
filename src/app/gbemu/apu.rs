@@ -43,7 +43,10 @@ pub struct APU {
     ch_2_volume: u8,
 
     //DAC Signals
+    dac_1_signal: f32,
     dac_2_signal: f32,
+    dac_3_signal: f32,
+    dac_4_signal: f32,
 
     //Sample cycle counter
     gb_sample_rate: f32,
@@ -86,7 +89,10 @@ impl APU {
             ch_2_period_counter: 0,
             ch_2_volume: 0,
             apu_counter: 0,
+            dac_1_signal: 0.0,
             dac_2_signal: 0.0,
+            dac_3_signal: 0.0,
+            dac_4_signal: 0.0,
             gb_sample_rate: (M_CYCLE_RATE / sample_rate).trunc(),
             gb_sample_counter: 0.0,
             sender
@@ -363,8 +369,6 @@ impl APU {
                     else {
                         self.ch_2_period_counter += 1;
                     }
-
-                    //TODO: Implement the envelope
                 }
                 else {
                     //if the channel is disabled, channel emits a digital 0 (analog -1)
@@ -375,9 +379,51 @@ impl APU {
 
         self.gb_sample_counter += 1.0;
         if self.gb_sample_counter == self.gb_sample_rate {
-            //TODO: Implement mixing and panning
-            let left_sample = self.dac_2_signal / 4.0;
-            let right_sample = self.dac_2_signal / 4.0;
+            //if the APU is disabled, only play silence 
+            if !self.ch_5_2_enable {
+                self.sender.send(0.0).unwrap();
+                self.sender.send(0.0).unwrap();
+                return;
+            }
+
+            let mut left_sample = 0.0;
+            let mut right_sample = 0.0;
+
+            //Mixing and Panning
+            if self.ch_5_1_panning & 0b1 != 0 {
+                right_sample += self.dac_1_signal;
+            }
+            if self.ch_5_1_panning & 0b10 != 0 {
+                right_sample += self.dac_2_signal;
+            }
+            if self.ch_5_1_panning & 0b100 != 0 {
+                right_sample += self.dac_3_signal;
+            }
+            if self.ch_5_1_panning & 0b1000 != 0 {
+                right_sample += self.dac_4_signal;
+            }
+            if self.ch_5_1_panning & 0b10000 != 0 {
+                left_sample += self.dac_1_signal;
+            }
+            if self.ch_5_1_panning & 0b100000 != 0 {
+                left_sample += self.dac_2_signal;
+            }
+            if self.ch_5_1_panning & 0b1000000 != 0 {
+                left_sample += self.dac_3_signal;
+            }
+            if self.ch_5_1_panning & 0b10000000 != 0 {
+                left_sample += self.dac_4_signal;
+            }
+
+            //Brings the mixed signal back into the range of -1.0 to +1.0
+            left_sample /= 4.0;
+            right_sample /= 4.0;
+
+            //Applies the master volume to left and right channels
+            let left_volume = ((self.ch_5_0_volume & 0x70) >> 3) + 1;
+            let right_volume = ((self.ch_5_0_volume & 0x7) << 1) + 1;
+            left_sample *= volume_to_analog(left_volume);
+            right_sample *= volume_to_analog(right_volume);
 
             self.sender.send(left_sample).unwrap();
             self.sender.send(right_sample).unwrap();
