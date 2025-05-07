@@ -311,7 +311,9 @@ impl APU {
                     if value & 0x80 != 0 {
                         //TODO: code for triggering channel 3
                         self.ch_3_enable = true;
-                        //TODO Figure out length timer
+                        if self.ch_3_length_counter == 0 {
+                            self.ch_3_length_counter = self.ch_3_1_length;
+                        }
                         self.ch_3_period_counter = self.ch_3_3_period;
                         self.ch_3_volume = (self.ch_3_2_level >> 5) & 0b11;
                         self.ch_3_sample_index = 0;
@@ -330,6 +332,7 @@ impl APU {
                         //TODO: Disable other channels
                         self.disable_ch_1();
                         self.disable_ch_2();
+                        self.disable_ch_3();
                     }
                     return;
                 },
@@ -522,6 +525,13 @@ impl APU {
                 self.ch_2_length_counter += 1;
                 if self.ch_2_length_counter == 64 {
                     self.disable_ch_2();
+                }
+            }
+
+            if self.ch_3_4_length_enable && self.ch_3_enable {
+                self.ch_3_length_counter += 1;
+                if self.ch_3_length_counter == 0 {
+                    self.disable_ch_3();
                 }
             }
         }
