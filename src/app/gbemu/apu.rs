@@ -25,6 +25,12 @@ pub struct APU {
     ch_3_3_period: u16,         //NR33
     ch_3_4_length_enable: bool, //NR34
 
+    //Channel 4 registers
+    ch_4_1_length: u8,          //NR41
+    ch_4_2_volume: u8,          //NR42
+    ch_4_3_randomness: u8,      //NR43
+    ch_4_4_length_enable: bool, //NR44
+
     //Master control registers
     ch_5_0_volume: u8,      //NR50
     ch_5_1_panning: u8,     //NR51
@@ -40,6 +46,7 @@ pub struct APU {
     dac_1_enable: bool,
     dac_2_enable: bool,
     dac_3_enable: bool,
+    dac_4_enable: bool,
 
     //Wave RAM
     wave_ram: [u8; 16],
@@ -76,6 +83,12 @@ pub struct APU {
     ch_3_volume: u8,
 
     //Channel 4
+    ch_4_lfsr: u16,
+    ch_4_period_counter: u8,
+    ch_4_length_counter: u8,
+    ch_4_envelope_counter: u8,
+    ch_4_envelope_pace: u8,
+    ch_4_envelope_increases: bool,
     ch_4_volume: u8,
 
     //DAC Signals
@@ -117,6 +130,10 @@ impl APU {
             ch_3_2_level: 0x9F,
             ch_3_3_period: 0x0000,
             ch_3_4_length_enable: true,
+            ch_4_1_length: 0xFF,
+            ch_4_2_volume: 0x00,
+            ch_4_3_randomness: 0x00,
+            ch_4_4_length_enable: true,
             ch_5_0_volume: 0x77,
             ch_5_1_panning: 0xF3,
             ch_5_2_enable: true,
@@ -128,6 +145,7 @@ impl APU {
             dac_1_enable: false,
             dac_2_enable: false,
             dac_3_enable: false,
+            dac_4_enable: false,
             ch_1_duty_counter: 0,
             ch_1_envelope_counter: 0,
             ch_1_envelope_increases: false,
@@ -149,6 +167,12 @@ impl APU {
             ch_3_period_counter: 0,
             ch_3_sample_index: 0,
             ch_3_volume: 0,
+            ch_4_envelope_counter: 0,
+            ch_4_envelope_pace: 0,
+            ch_4_envelope_increases: false,
+            ch_4_length_counter: 0,
+            ch_4_lfsr: 0,
+            ch_4_period_counter: 0,
             ch_4_volume: 0,
             apu_counter: 0,
             dac_1_signal: 0.0,
@@ -180,6 +204,11 @@ impl APU {
                 0xFF1C => self.ch_3_2_level, //NR32
                 0xFF1D => 0xFF, //NR33
                 0xFF1E => if self.ch_2_4_length_enable {0xFF} else {0xBF}, //NR34
+
+                0xFF20 => self.ch_4_1_length | 0b11000000, //NR41
+                0xFF21 => self.ch_4_2_volume, //NR42
+                0xFF22 => self.ch_4_3_randomness, //NR43
+                0xFF23 => if self.ch_4_4_length_enable {0xFF} else {0xBF}, //NR44
 
                 0xFF24 => self.ch_5_0_volume, //NR50
                 0xFF25 => self.ch_5_1_panning, //NR 51
@@ -324,6 +353,36 @@ impl APU {
                     return;
                 },
 
+                0xFF20 => &mut self.ch_4_1_length, //NR41
+                0xFF21 => { //NR42
+                    self.dac_4_enable = value & 0xF8 != 0;
+                    if !self.dac_4_enable {
+                        self.disable_ch_4();
+                    }
+
+                    &mut self.ch_4_2_volume
+                },
+                0xFF22 => &mut self.ch_4_3_randomness, //NR43
+                0xFF23 => {
+                    if value & 0x80 != 0 {
+                        //TODO code for triggering channel 4
+                        self.ch_4_enable = true;
+                        if self.ch_4_length_counter == 64 {
+                            self.ch_4_length_counter = self.ch_4_1_length & 0x3F;
+                        }
+                        self.ch_4_period_counter = (self.ch_4_3_randomness & 0b111) << (self.ch_4_3_randomness >> 4);
+                        self.ch_4_envelope_counter = 0;
+                        self.ch_4_volume = self.ch_4_2_volume >> 4;
+                        self.ch_4_envelope_increases = self.ch_4_2_volume & 0b1000 != 0;
+                        self.ch_4_envelope_pace = self.ch_4_2_volume & 0b111;
+                        self.ch_4_lfsr = 0;
+                    }
+
+                    self.ch_4_4_length_enable = value & 0x40 != 0;
+                    self.ch_4_period_counter = 0;
+                    return;
+                },
+
                 0xFF24 => &mut self.ch_5_0_volume, //NR50
                 0xFF25 => &mut self.ch_5_1_panning, //NR51
                 0xFF26 => { //NR52
@@ -377,6 +436,14 @@ impl APU {
         self.ch_3_period_counter = 0;
         self.ch_3_sample_index = 0;
         self.ch_3_volume = 0;
+    }
+
+    fn disable_ch_4(&mut self) {
+        self.ch_4_enable = false;
+        self.ch_4_length_counter = 0;
+        self.ch_4_envelope_counter = 0;
+        self.ch_4_period_counter = 0;
+        self.ch_4_volume = 0;
     }
     
     pub fn init_device(receiver: Receiver<f32>, sample_send: Sender<f32>) {
