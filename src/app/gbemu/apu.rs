@@ -73,7 +73,7 @@ pub struct APU {
     ch_3_sample_index: u8,
     ch_3_length_counter: u8,
     ch_3_period_counter: u16,
-    ch_3_volume: f32,
+    ch_3_volume: u8,
 
     //Channel 4
     ch_4_volume: u8,
@@ -148,7 +148,7 @@ impl APU {
             ch_3_length_counter: 0,
             ch_3_period_counter: 0,
             ch_3_sample_index: 0,
-            ch_3_volume: 0.0,
+            ch_3_volume: 0,
             ch_4_volume: 0,
             apu_counter: 0,
             dac_1_signal: 0.0,
@@ -313,13 +313,7 @@ impl APU {
                         self.ch_3_enable = true;
                         //TODO Figure out length timer
                         self.ch_3_period_counter = self.ch_3_3_period;
-                        self.ch_3_volume = match (self.ch_3_2_level >> 5) & 0b11 {
-                            0b00 => 0.0,
-                            0b01 => 1.0,
-                            0b10 => 0.5,
-                            0b11 => 0.25,
-                            _ => panic!("ERROR: Invalid level bits {}", self.ch_3_2_level)
-                        };
+                        self.ch_3_volume = (self.ch_3_2_level >> 5) & 0b11;
                         self.ch_3_sample_index = 0;
                     }
 
@@ -379,7 +373,7 @@ impl APU {
         self.ch_3_length_counter = 0;
         self.ch_3_period_counter = 0;
         self.ch_3_sample_index = 0;
-        self.ch_3_volume = 0.0;
+        self.ch_3_volume = 0;
     }
     
     pub fn init_device(receiver: Receiver<f32>, sample_send: Sender<f32>) {
@@ -434,7 +428,7 @@ impl APU {
 
         let mut next_value = move || {
             let sample = receiver.recv().unwrap();
-            println!("{sample}");
+            //println!("{sample}");
 
             is_left_channel = ! is_left_channel;
             
@@ -595,13 +589,13 @@ impl APU {
                     if self.ch_1_period_counter == 0x7FF {
                         self.ch_1_period_counter = self.ch_1_3_period;
 
-                        //Clock the duty step counter
-                        self.ch_1_duty_counter += 1;
-
                         let duty_cycle = (self.ch_1_1_length >> 6) as usize;
                         let duty_step = (self.ch_1_duty_counter & 0b111) as usize;
 
                         self.dac_1_signal = DUTY_VALUES[duty_cycle][duty_step];
+
+                        //Clock the duty step counter
+                        self.ch_1_duty_counter += 1;
                         //println!("f: {frequency}, d: {duty_cycle}, v: {}", self.sample_data.ch_2_amp);
                     }
                     else {
@@ -624,13 +618,13 @@ impl APU {
                     if self.ch_2_period_counter == 0x7FF {
                         self.ch_2_period_counter = self.ch_2_3_period;
 
-                        //Clock the duty step counter
-                        self.ch_2_duty_counter += 1;
-
                         let duty_cycle = (self.ch_2_1_length >> 6) as usize;
                         let duty_step = (self.ch_2_duty_counter & 0b111) as usize;
 
                         self.dac_2_signal = DUTY_VALUES[duty_cycle][duty_step];
+
+                        //Clock the duty step counter
+                        self.ch_2_duty_counter += 1;
                         //println!("f: {frequency}, d: {duty_cycle}, v: {}", self.sample_data.ch_2_amp);
                     }
                     else {
@@ -641,6 +635,46 @@ impl APU {
                     //if the channel is disabled, channel emits a digital 0 (analog -1)
                     //0.0
                 };
+            }
+
+            if self.dac_3_enable {
+                if self.ch_3_enable {
+                    for _ in 0..2 {
+                        if self.ch_3_period_counter == 0x7FF {
+                            self.ch_3_period_counter = self.ch_3_3_period;
+
+                            let is_odd = self.ch_3_sample_index & 0b1 != 0;
+                            let index = ((self.ch_3_sample_index & 0x1F) >> 1) as usize;
+
+                            let sample;
+                            if is_odd {
+                                sample = self.wave_ram[index] >> 4;
+                            }
+                            else {
+                                sample = self.wave_ram[index] & 0xF;
+                            }
+
+                            let volume_shift = match self.ch_3_volume {
+                                0b00 => 4,
+                                0b01 => 0,
+                                0b10 => 1,
+                                0b11 => 2,
+                                _ => panic!("ERROR: Invalid shift bits {}", self.ch_3_2_level)
+                            };
+
+                            self.dac_3_signal = volume_to_analog(sample >> volume_shift);
+
+                            //Clock the sample index
+                            self.ch_3_sample_index += 1;
+                        }
+                        else {
+                            self.ch_3_period_counter += 1;
+                        }
+                    }
+                }
+                else {
+                    //TODO what to do when dac is on and channel is off
+                }
             }
         }
 
@@ -664,7 +698,7 @@ impl APU {
                 right_sample += self.dac_2_signal * volume_to_analog(self.ch_2_volume);
             }
             if self.ch_5_1_panning & 0b100 != 0 {
-                right_sample += self.dac_3_signal * self.ch_3_volume;
+                right_sample += self.dac_3_signal;
             }
             if self.ch_5_1_panning & 0b1000 != 0 {
                 right_sample += self.dac_4_signal * volume_to_analog(self.ch_4_volume);
@@ -676,7 +710,7 @@ impl APU {
                 left_sample += self.dac_2_signal * volume_to_analog(self.ch_2_volume);
             }
             if self.ch_5_1_panning & 0b1000000 != 0 {
-                left_sample += self.dac_3_signal * self.ch_3_volume;
+                left_sample += self.dac_3_signal;
             }
             if self.ch_5_1_panning & 0b10000000 != 0 {
                 left_sample += self.dac_4_signal * volume_to_analog(self.ch_4_volume);
