@@ -50,7 +50,6 @@ pub struct APU {
     gb_sample_counter: f32,
 
     //Variables for sending data to audio library
-    sample_data: SampleData,
     sender: Sender<f32>,
 }
 
@@ -90,7 +89,6 @@ impl APU {
             dac_2_signal: 0.0,
             gb_sample_rate: (M_CYCLE_RATE / sample_rate).trunc(),
             gb_sample_counter: 0.0,
-            sample_data: SampleData::default(),
             sender
         }
     }
@@ -206,7 +204,6 @@ impl APU {
         self.ch_2_length_counter = 0;
         self.ch_2_period_counter = 0;
         self.ch_2_volume = 0;
-        self.sample_data.ch_2_freq = 0.0;
     }
     
     pub fn init_device(receiver: Receiver<f32>, sample_send: Sender<f32>) {
@@ -398,17 +395,4 @@ fn _digital_to_analog(digital: u8) -> f32 {
 fn volume_to_analog(volume: u8) -> f32 {
     let volume = (volume & 0x0F) as f32;
     volume / 15.0
-}
-
-#[derive(Clone,Copy)]
-pub struct SampleData {
-    ch_2_freq: f32,
-}
-
-impl Default for SampleData {
-    fn default() -> Self {
-        Self { 
-            ch_2_freq: 0.0,
-        }
-    }
 }
