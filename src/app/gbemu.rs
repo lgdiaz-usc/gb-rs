@@ -128,12 +128,12 @@ impl GBEmu {
 
                         
                     }     
-
-                    console.update_apu();
                     
                     //Wait until next t_cycle
                     thread::sleep(next_cycle - Instant::now());
-                    next_cycle += cycle_time;               
+                    next_cycle += cycle_time;     
+
+                    console.update_apu();          
                 }
             }
 

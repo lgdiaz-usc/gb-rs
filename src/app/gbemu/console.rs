@@ -522,8 +522,8 @@ impl GBConsole {
         let will_update_apu;
         //if dmg
         {
-            will_update_apu = (system_counter_before & 0x20 != 0) 
-                              && (self.system_counter & 0x20 == 0);
+            will_update_apu = (system_counter_before & 0x400 != 0) 
+                              && (self.system_counter & 0x400 == 0);
         } 
         //TODO turn above into an if statement and add else clause for CGB behavior
 

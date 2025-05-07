@@ -303,8 +303,8 @@ impl APU {
         //TODO: Implement events that occur every N DIV-APU ticks
         let will_update_envelope;
         {
-            let state_before = apu_counter_before & 0b1000 != 0;
-            let state_after = self.apu_counter & 0b1000 != 0;
+            let state_before = apu_counter_before & 0b100 != 0;
+            let state_after = self.apu_counter & 0b100 != 0;
             will_update_envelope = state_before && !state_after;
         }
         if will_update_envelope && self.ch_2_sweep_pace != 0 {
@@ -318,7 +318,7 @@ impl APU {
                 }
                 
                 if self.dac_2_signal != 0.0 {
-                    self.dac_2_signal = digital_to_analog(self.ch_2_volume);
+                    self.dac_2_signal = volume_to_analog(self.ch_2_volume);
                 }
 
                 self.ch_2_envelope_counter = 0;
@@ -327,8 +327,8 @@ impl APU {
 
         let will_update_length_timer;
         {
-            let state_before = apu_counter_before & 0b10 != 0;
-            let state_after = self.apu_counter & 0b10 != 0;
+            let state_before = apu_counter_before & 0b1 != 0;
+            let state_after = self.apu_counter & 0b1 != 0;
             will_update_length_timer = state_before && !state_after;
         }
         if will_update_length_timer {
@@ -360,7 +360,7 @@ impl APU {
                         let duty_cycle = (self.ch_2_1_length >> 6) as usize;
                         let duty_step = (self.ch_2_duty_counter & 0b111) as usize;
 
-                        self.dac_2_signal = DUTY_VALUES[duty_cycle][duty_step] * digital_to_analog(self.ch_2_volume);
+                        self.dac_2_signal = DUTY_VALUES[duty_cycle][duty_step] * volume_to_analog(self.ch_2_volume);
                         //println!("f: {frequency}, d: {duty_cycle}, v: {}", self.sample_data.ch_2_amp);
                     }
                     else {
@@ -390,9 +390,14 @@ impl APU {
     }
 }
 
-fn digital_to_analog(digital: u8) -> f32 {
+fn _digital_to_analog(digital: u8) -> f32 {
     let digital = (digital & 0x0F) as f32;
     (2.0 / 15.0) * digital - 1.0
+}
+
+fn volume_to_analog(volume: u8) -> f32 {
+    let volume = (volume & 0x0F) as f32;
+    volume / 15.0
 }
 
 #[derive(Clone,Copy)]
