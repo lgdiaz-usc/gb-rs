@@ -7,6 +7,7 @@ const M_CYCLE_RATE: f32 = 1048576.0;
 
 pub struct APU {
     //Channel 1 registers
+    ch_1_0_sweep: u8, //NR10
     ch_1_1_length: u8,   //NR11
     ch_1_2_volume: u8,   //NR12
     ch_1_3_period: u16,      //NR13
@@ -46,8 +47,11 @@ pub struct APU {
     ch_1_length_counter: u8,
     ch_1_envelope_counter: u8,
     ch_1_envelope_increases: bool,
-    ch_1_sweep_pace: u8,
+    ch_1_envelope_pace: u8,
     ch_1_volume: u8,
+    ch_1_sweep_period: u16,
+    ch_1_sweep_pace: u8,
+    ch_1_sweep_enabled: bool,
 
     //Channel 2
     ch_2_duty_counter: u8,
@@ -55,7 +59,7 @@ pub struct APU {
     ch_2_length_counter: u8,
     ch_2_envelope_counter: u8,
     ch_2_envelope_increases: bool,
-    ch_2_sweep_pace: u8,
+    ch_2_envelope_pace: u8,
     ch_2_volume: u8,
 
     //DAC Signals
@@ -84,6 +88,7 @@ impl APU {
         let sample_rate = sample_receive.recv().unwrap();
 
         Self {
+            ch_1_0_sweep: 0x80,
             ch_1_1_length: 0x3F,
             ch_1_2_volume: 0x00,
             ch_1_3_period: 0x0000,
@@ -105,14 +110,17 @@ impl APU {
             ch_1_duty_counter: 0,
             ch_1_envelope_counter: 0,
             ch_1_envelope_increases: false,
-            ch_1_sweep_pace: 0,
+            ch_1_envelope_pace: 0,
             ch_1_length_counter: 0,
             ch_1_period_counter: 0,
             ch_1_volume: 0,
+            ch_1_sweep_pace: 0,
+            ch_1_sweep_period: 0,
+            ch_1_sweep_enabled: false,
             ch_2_duty_counter: 0,
             ch_2_envelope_counter: 0,
             ch_2_envelope_increases: false,
-            ch_2_sweep_pace: 0,
+            ch_2_envelope_pace: 0,
             ch_2_length_counter: 0,
             ch_2_period_counter: 0,
             ch_2_volume: 0,
@@ -130,6 +138,7 @@ impl APU {
     pub fn read(&self, address: u16) -> u8 {
         if address >= 0xFF10 && address <= 0xFF26 {
             match address {
+                0xFF10 => self.ch_1_0_sweep | 0x80, //NR10
                 0xFF11 => self.ch_1_1_length | 0b111111, //NR11
                 0xFF12 => self.ch_1_2_volume, //NR12
                 0xFF13 => 0xFF, //NR13
@@ -179,6 +188,7 @@ impl APU {
         if address >= 0xFF10 && address <= 0xFF26 {
             //let mut value = value;
             let register = match address {
+                0xFF10 => &mut self.ch_1_0_sweep, //NR10
                 0xFF11 => &mut self.ch_1_1_length, //NR11
                 0xFF12 => { //NR12
                     self.dac_1_enable = value & 0xF8 != 0;
@@ -204,7 +214,13 @@ impl APU {
                         self.ch_1_envelope_counter = 0;
                         self.ch_1_volume = self.ch_1_2_volume >> 4;
                         self.ch_1_envelope_increases = self.ch_1_2_volume & 0b1000 != 0;
-                        self.ch_1_sweep_pace = self.ch_1_2_volume & 0b111;
+                        self.ch_1_envelope_pace = self.ch_1_2_volume & 0b111;
+                        self.ch_1_sweep_period = self.ch_1_3_period;
+                        self.ch_1_sweep_pace = (self.ch_1_0_sweep >> 4) & 0b111;
+                        self.ch_1_sweep_enabled = (self.ch_1_sweep_pace != 0) || (self.ch_1_0_sweep & 0b111 != 0);
+                        if self.ch_1_0_sweep & 0b111 != 0 {
+                            self.calculate_sweep();
+                        }
                     }
 
                     self.ch_1_4_length_enable = value & 0x40 != 0;
@@ -237,7 +253,7 @@ impl APU {
                         self.ch_2_envelope_counter = 0;
                         self.ch_2_volume = self.ch_2_2_volume >> 4;
                         self.ch_2_envelope_increases = self.ch_2_2_volume & 0b1000 != 0;
-                        self.ch_2_sweep_pace = self.ch_2_2_volume & 0b111;
+                        self.ch_2_envelope_pace = self.ch_2_2_volume & 0b111;
                     }
 
                     self.ch_2_4_length_enable = value & 0x40 != 0;
@@ -251,6 +267,7 @@ impl APU {
                     self.ch_5_2_enable = value & 0x80 != 0;
                     if !self.ch_5_2_enable {
                         //TODO: Disable other channels
+                        self.disable_ch_1();
                         self.disable_ch_2();
                     }
                     return;
@@ -277,6 +294,9 @@ impl APU {
         self.ch_1_length_counter = 0;
         self.ch_1_period_counter = 0;
         self.ch_1_volume = 0;
+        self.ch_1_sweep_enabled = false;
+        self.ch_1_sweep_pace = 0;
+        self.ch_1_sweep_period = 0;
     }
 
     fn disable_ch_2(&mut self) {
@@ -386,9 +406,9 @@ impl APU {
             will_update_envelope = state_before && !state_after;
         }
         if will_update_envelope {
-            if self.ch_1_sweep_pace != 0 {
+            if self.ch_1_envelope_pace != 0 {
                 self.ch_1_envelope_counter += 1;
-                if self.ch_1_envelope_counter == self.ch_1_sweep_pace {
+                if self.ch_1_envelope_counter == self.ch_1_envelope_pace {
                     if self.ch_1_envelope_increases && self.ch_1_volume < 0xF {
                         self.ch_1_volume += 1;
                     }
@@ -404,9 +424,9 @@ impl APU {
                 }
             }
 
-            if self.ch_2_sweep_pace != 0 {
+            if self.ch_2_envelope_pace != 0 {
                 self.ch_2_envelope_counter += 1;
-                if self.ch_2_envelope_counter == self.ch_2_sweep_pace {
+                if self.ch_2_envelope_counter == self.ch_2_envelope_pace {
                     if self.ch_2_envelope_increases && self.ch_2_volume < 0xF {
                         self.ch_2_volume += 1;
                     }
@@ -445,6 +465,55 @@ impl APU {
             }
         }
 
+        let will_update_sweep;
+        {
+            let state_before = apu_counter_before & 0b10 != 0;
+            let state_after = self.apu_counter & 0b10 != 0;
+            will_update_sweep = state_before && !state_after;
+        }
+        if will_update_sweep {
+            if self.ch_1_sweep_pace > 0 {
+                self.ch_1_sweep_pace -= 0;
+            }
+
+            if self.ch_1_sweep_pace == 0 {
+                let new_pace = (self.ch_1_0_sweep >> 4) & 0b111;
+                if new_pace != 0 {
+                    self.ch_1_sweep_pace = new_pace;
+                }
+                else {
+                    self.ch_1_sweep_pace = 8;
+                }
+
+                if self.ch_1_sweep_enabled && new_pace != 0 {
+                    let new_period = self.calculate_sweep();
+                    if self.ch_1_enable {
+                        self.ch_1_sweep_period = new_period;
+                        self.ch_1_3_period = new_period;
+                        self.calculate_sweep();
+                    }
+                }
+            }
+        }
+
+    }
+
+    fn calculate_sweep(&mut self) -> u16 {
+        let shifted_period = self.ch_1_sweep_period >> (self.ch_1_0_sweep & 0b111);
+
+        let new_period;
+        if self.ch_1_0_sweep & 0b1000 == 0 {
+            new_period = self.ch_1_sweep_period + shifted_period;
+        }
+        else {
+            new_period = self.ch_1_sweep_period - shifted_period;
+        }
+
+        if new_period > 0x7FF {
+            self.disable_ch_1();
+        }
+
+        new_period
     }
 
     pub fn update_apu(&mut self) {
