@@ -7,22 +7,28 @@ const M_CYCLE_RATE: f32 = 1048576.0;
 
 pub struct APU {
     //Channel 1 registers
-    ch_1_0_sweep: u8, //NR10
-    ch_1_1_length: u8,   //NR11
-    ch_1_2_volume: u8,   //NR12
-    ch_1_3_period: u16,      //NR13
-    ch_1_4_length_enable: bool,     //NR14
+    ch_1_0_sweep: u8,           //NR10
+    ch_1_1_length: u8,          //NR11
+    ch_1_2_volume: u8,          //NR12
+    ch_1_3_period: u16,         //NR13
+    ch_1_4_length_enable: bool, //NR14
 
     //Channel 2 registers
-    ch_2_1_length: u8,   //NR21
-    ch_2_2_volume: u8,   //NR22
-    ch_2_3_period: u16,      //NR23
-    ch_2_4_length_enable: bool,     //NR24
+    ch_2_1_length: u8,          //NR21
+    ch_2_2_volume: u8,          //NR22
+    ch_2_3_period: u16,         //NR23
+    ch_2_4_length_enable: bool, //NR24
+
+    //Channel 3 registers
+    ch_3_1_length: u8,          //NR31
+    ch_3_2_level: u8,           //NR32
+    ch_3_3_period: u16,         //NR33
+    ch_3_4_length_enable: bool, //NR34
 
     //Master control registers
-    ch_5_0_volume: u8,   //NR50
-    ch_5_1_panning: u8,  //NR51
-    ch_5_2_enable: bool,   //NR52
+    ch_5_0_volume: u8,      //NR50
+    ch_5_1_panning: u8,     //NR51
+    ch_5_2_enable: bool,    //NR52
 
     //Channel Enable flags
     ch_1_enable: bool,
@@ -33,6 +39,7 @@ pub struct APU {
     //DAC Enable falgs
     dac_1_enable: bool,
     dac_2_enable: bool,
+    dac_3_enable: bool,
 
     //Wave RAM
     wave_ram: [u8; 16],
@@ -63,7 +70,10 @@ pub struct APU {
     ch_2_volume: u8,
 
     //Channel 3
-    ch_3_volume: u8,
+    ch_3_sample_index: u8,
+    ch_3_length_counter: u8,
+    ch_3_period_counter: u16,
+    ch_3_volume: f32,
 
     //Channel 4
     ch_4_volume: u8,
@@ -103,6 +113,10 @@ impl APU {
             ch_2_2_volume: 0x00,
             ch_2_3_period: 0x0000,
             ch_2_4_length_enable: true,
+            ch_3_1_length: 0xFF,
+            ch_3_2_level: 0x9F,
+            ch_3_3_period: 0x0000,
+            ch_3_4_length_enable: true,
             ch_5_0_volume: 0x77,
             ch_5_1_panning: 0xF3,
             ch_5_2_enable: true,
@@ -113,6 +127,7 @@ impl APU {
             ch_4_enable: false,
             dac_1_enable: false,
             dac_2_enable: false,
+            dac_3_enable: false,
             ch_1_duty_counter: 0,
             ch_1_envelope_counter: 0,
             ch_1_envelope_increases: false,
@@ -130,7 +145,10 @@ impl APU {
             ch_2_length_counter: 0,
             ch_2_period_counter: 0,
             ch_2_volume: 0,
-            ch_3_volume: 0,
+            ch_3_length_counter: 0,
+            ch_3_period_counter: 0,
+            ch_3_sample_index: 0,
+            ch_3_volume: 0.0,
             ch_4_volume: 0,
             apu_counter: 0,
             dac_1_signal: 0.0,
@@ -156,6 +174,12 @@ impl APU {
                 0xFF17 => self.ch_2_2_volume, //NR22
                 0xFF18 => 0xFF, //NR23
                 0xFF19 => if self.ch_2_4_length_enable {0xFF} else {0xBF}, //NR24
+
+                0xFF1A => if self.dac_3_enable {0xFF} else {0x7F}, //NR30
+                0xFF1B => 0xFF, //NR31
+                0xFF1C => self.ch_3_2_level, //NR32
+                0xFF1D => 0xFF, //NR33
+                0xFF1E => if self.ch_2_4_length_enable {0xFF} else {0xBF}, //NR34
 
                 0xFF24 => self.ch_5_0_volume, //NR50
                 0xFF25 => self.ch_5_1_panning, //NR 51
@@ -269,6 +293,41 @@ impl APU {
                     return;
                 },
 
+                0xFF1A => { //NR30
+                    self.dac_3_enable = value & 0x80 != 0;
+                    if !self.dac_3_enable {
+                        self.disable_ch_3();
+                    }
+                    return;
+                },
+                0xFF1B => &mut self.ch_3_1_length, //NR31
+                0xFF1C => &mut self.ch_3_2_level, //NR32
+                0xFF1D => { //NR33
+                    self.ch_3_3_period &= 0xFF00;
+                    self.ch_3_3_period |= value as u16;
+                    return;
+                }
+                0xFF1E => { //NR34
+                    if value & 0x80 != 0 {
+                        //TODO: code for triggering channel 3
+                        self.ch_3_enable = true;
+                        //TODO Figure out length timer
+                        self.ch_3_period_counter = self.ch_3_3_period;
+                        self.ch_3_volume = match (self.ch_3_2_level >> 5) & 0b11 {
+                            0b00 => 0.0,
+                            0b01 => 1.0,
+                            0b10 => 0.5,
+                            0b11 => 0.25,
+                            _ => panic!("ERROR: Invalid level bits {}", self.ch_3_2_level)
+                        };
+                        self.ch_3_sample_index = 0;
+                    }
+
+                    self.ch_3_4_length_enable = value & 0x40 != 0;
+                    self.ch_3_3_period = (self.ch_3_3_period & 0x00FF) | ((value as u16 & 0b111) << 8);
+                    return;
+                },
+
                 0xFF24 => &mut self.ch_5_0_volume, //NR50
                 0xFF25 => &mut self.ch_5_1_panning, //NR51
                 0xFF26 => { //NR52
@@ -313,6 +372,14 @@ impl APU {
         self.ch_2_length_counter = 0;
         self.ch_2_period_counter = 0;
         self.ch_2_volume = 0;
+    }
+
+    fn disable_ch_3(&mut self) {
+        self.ch_3_enable = false;
+        self.ch_3_length_counter = 0;
+        self.ch_3_period_counter = 0;
+        self.ch_3_sample_index = 0;
+        self.ch_3_volume = 0.0;
     }
     
     pub fn init_device(receiver: Receiver<f32>, sample_send: Sender<f32>) {
@@ -597,7 +664,7 @@ impl APU {
                 right_sample += self.dac_2_signal * volume_to_analog(self.ch_2_volume);
             }
             if self.ch_5_1_panning & 0b100 != 0 {
-                right_sample += self.dac_3_signal * volume_to_analog(self.ch_3_volume);
+                right_sample += self.dac_3_signal * self.ch_3_volume;
             }
             if self.ch_5_1_panning & 0b1000 != 0 {
                 right_sample += self.dac_4_signal * volume_to_analog(self.ch_4_volume);
@@ -609,7 +676,7 @@ impl APU {
                 left_sample += self.dac_2_signal * volume_to_analog(self.ch_2_volume);
             }
             if self.ch_5_1_panning & 0b1000000 != 0 {
-                left_sample += self.dac_3_signal * volume_to_analog(self.ch_3_volume);
+                left_sample += self.dac_3_signal * self.ch_3_volume;
             }
             if self.ch_5_1_panning & 0b10000000 != 0 {
                 left_sample += self.dac_4_signal * volume_to_analog(self.ch_4_volume);
