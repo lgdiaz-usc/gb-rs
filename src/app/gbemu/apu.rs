@@ -62,6 +62,12 @@ pub struct APU {
     ch_2_envelope_pace: u8,
     ch_2_volume: u8,
 
+    //Channel 3
+    ch_3_volume: u8,
+
+    //Channel 4
+    ch_4_volume: u8,
+
     //DAC Signals
     dac_1_signal: f32,
     dac_2_signal: f32,
@@ -124,6 +130,8 @@ impl APU {
             ch_2_length_counter: 0,
             ch_2_period_counter: 0,
             ch_2_volume: 0,
+            ch_3_volume: 0,
+            ch_4_volume: 0,
             apu_counter: 0,
             dac_1_signal: 0.0,
             dac_2_signal: 0.0,
@@ -415,10 +423,6 @@ impl APU {
                     else if !self.ch_1_envelope_increases && self.ch_1_volume > 0x0 {
                         self.ch_1_volume -= 1;
                     }
-                    
-                    if self.dac_1_signal != 0.0 {
-                        self.dac_1_signal = volume_to_analog(self.ch_1_volume);
-                    }
                 
                     self.ch_1_envelope_counter = 0;
                 }
@@ -432,10 +436,6 @@ impl APU {
                     }
                     else if !self.ch_2_envelope_increases && self.ch_2_volume > 0x0 {
                         self.ch_2_volume -= 1;
-                    }
-
-                    if self.dac_2_signal != 0.0 {
-                        self.dac_2_signal = volume_to_analog(self.ch_2_volume);
                     }
 
                     self.ch_2_envelope_counter = 0;
@@ -534,7 +534,7 @@ impl APU {
                         let duty_cycle = (self.ch_1_1_length >> 6) as usize;
                         let duty_step = (self.ch_1_duty_counter & 0b111) as usize;
 
-                        self.dac_1_signal = DUTY_VALUES[duty_cycle][duty_step] * volume_to_analog(self.ch_1_volume);
+                        self.dac_1_signal = DUTY_VALUES[duty_cycle][duty_step];
                         //println!("f: {frequency}, d: {duty_cycle}, v: {}", self.sample_data.ch_2_amp);
                     }
                     else {
@@ -563,7 +563,7 @@ impl APU {
                         let duty_cycle = (self.ch_2_1_length >> 6) as usize;
                         let duty_step = (self.ch_2_duty_counter & 0b111) as usize;
 
-                        self.dac_2_signal = DUTY_VALUES[duty_cycle][duty_step] * volume_to_analog(self.ch_2_volume);
+                        self.dac_2_signal = DUTY_VALUES[duty_cycle][duty_step];
                         //println!("f: {frequency}, d: {duty_cycle}, v: {}", self.sample_data.ch_2_amp);
                     }
                     else {
@@ -591,28 +591,28 @@ impl APU {
 
             //Mixing and Panning
             if self.ch_5_1_panning & 0b1 != 0 {
-                right_sample += self.dac_1_signal;
+                right_sample += self.dac_1_signal * volume_to_analog(self.ch_1_volume);
             }
             if self.ch_5_1_panning & 0b10 != 0 {
-                right_sample += self.dac_2_signal;
+                right_sample += self.dac_2_signal * volume_to_analog(self.ch_2_volume);
             }
             if self.ch_5_1_panning & 0b100 != 0 {
-                right_sample += self.dac_3_signal;
+                right_sample += self.dac_3_signal * volume_to_analog(self.ch_3_volume);
             }
             if self.ch_5_1_panning & 0b1000 != 0 {
-                right_sample += self.dac_4_signal;
+                right_sample += self.dac_4_signal * volume_to_analog(self.ch_4_volume);
             }
             if self.ch_5_1_panning & 0b10000 != 0 {
-                left_sample += self.dac_1_signal;
+                left_sample += self.dac_1_signal * volume_to_analog(self.ch_1_volume);
             }
             if self.ch_5_1_panning & 0b100000 != 0 {
-                left_sample += self.dac_2_signal;
+                left_sample += self.dac_2_signal * volume_to_analog(self.ch_2_volume);
             }
             if self.ch_5_1_panning & 0b1000000 != 0 {
-                left_sample += self.dac_3_signal;
+                left_sample += self.dac_3_signal * volume_to_analog(self.ch_3_volume);
             }
             if self.ch_5_1_panning & 0b10000000 != 0 {
-                left_sample += self.dac_4_signal;
+                left_sample += self.dac_4_signal * volume_to_analog(self.ch_4_volume);
             }
 
             //Brings the mixed signal back into the range of -1.0 to +1.0
