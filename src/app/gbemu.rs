@@ -95,7 +95,7 @@ impl GBEmu {
         let clock_speed = 4.194304;
         let speed_factor = 1;
         //let fps = 4.0;
-        let cycle_time = Duration::from_nanos((1000_f64 / clock_speed).round() as u64 * speed_factor);
+        let cycle_time = Duration::from_nanos((4000_f64 / clock_speed).round() as u64 * speed_factor);
         let mut next_cycle = Instant::now() + cycle_time;
 
         let mut cpu_delay = 255;
@@ -126,12 +126,14 @@ impl GBEmu {
                             console_output.push((serial_output as char).to_ascii_uppercase());
                         }
 
-                        //Wait until next t_cycle
-                        thread::sleep(next_cycle - Instant::now());
-                        next_cycle += cycle_time;
+                        
+                    }     
 
-                        console.update_apu();
-                    }                    
+                    console.update_apu();
+                    
+                    //Wait until next t_cycle
+                    thread::sleep(next_cycle - Instant::now());
+                    next_cycle += cycle_time;               
                 }
             }
 
