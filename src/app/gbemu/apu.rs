@@ -238,7 +238,12 @@ impl APU {
             }
         }
         else if address >= 0xFF30 && address <= 0xFF3F {
-            self.wave_ram[(address - 0xFF30) as usize]
+            if self.ch_3_enable {
+                0xFF
+            }
+            else {
+                self.wave_ram[(address - 0xFF30) as usize]
+            }
         }
         else {
             panic!("ERROR: Address ${:x} out of bounds!", address)
@@ -395,7 +400,7 @@ impl APU {
                     return;
                 },
                 _ => {
-                    //println!("ERROR: Unknown register ${:x}", address);
+                    println!("ERROR: Unknown register ${:x}", address);
                     return;
                 }
             };
@@ -403,7 +408,9 @@ impl APU {
             *register = value;
         }
         else if address >= 0xFF30 && address <= 0xFF3F {
-            self.wave_ram[(address - 0xFF30) as usize] = value;
+            if !self.ch_3_enable {
+                self.wave_ram[(address - 0xFF30) as usize] = value;
+            }
         }
         else {
             panic!("ERROR: Address ${:x} out of bounds!", address)
@@ -483,8 +490,6 @@ impl APU {
         let channels = config.channels as usize;
         sample_send.send(sample_rate).unwrap();
 
-        //let mut sample_buffer = VecDeque::new();
-
         let mut left_capacitor = 0.0;
         let mut right_capacitor = 0.0;
         let charge_factor = 0.999958_f32.powf(T_CYCLE_RATE / sample_rate);
@@ -542,7 +547,6 @@ impl APU {
         let apu_counter_before = self.apu_counter;
         self.apu_counter += 1;
 
-        //TODO: Implement events that occur every N DIV-APU ticks
         let will_update_envelope;
         {
             let state_before = apu_counter_before & 0b100 != 0;
