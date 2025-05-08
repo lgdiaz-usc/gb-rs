@@ -84,7 +84,7 @@ pub struct APU {
 
     //Channel 4
     ch_4_lfsr: u16,
-    ch_4_period_counter: u8,
+    ch_4_period_counter: u16,
     ch_4_length_counter: u8,
     ch_4_envelope_counter: u8,
     ch_4_envelope_pace: u8,
@@ -370,16 +370,15 @@ impl APU {
                         if self.ch_4_length_counter == 64 {
                             self.ch_4_length_counter = self.ch_4_1_length & 0x3F;
                         }
-                        self.ch_4_period_counter = (self.ch_4_3_randomness & 0b111) << (self.ch_4_3_randomness >> 4);
+                        self.ch_4_period_counter = self.get_ch_4_divisor();
                         self.ch_4_envelope_counter = 0;
                         self.ch_4_volume = self.ch_4_2_volume >> 4;
                         self.ch_4_envelope_increases = self.ch_4_2_volume & 0b1000 != 0;
                         self.ch_4_envelope_pace = self.ch_4_2_volume & 0b111;
-                        self.ch_4_lfsr = 0;
+                        self.ch_4_lfsr = 0xEFFF;
                     }
 
                     self.ch_4_4_length_enable = value & 0x40 != 0;
-                    self.ch_4_period_counter = 0;
                     return;
                 },
 
@@ -444,6 +443,12 @@ impl APU {
         self.ch_4_envelope_counter = 0;
         self.ch_4_period_counter = 0;
         self.ch_4_volume = 0;
+    }
+
+    fn get_ch_4_divisor(&self) -> u16 {
+        let divisor_code = self.ch_4_3_randomness & 0b111;
+        let divisor = if divisor_code == 0 {8} else {16 * divisor_code} as u16;
+        (divisor << (self.ch_4_3_randomness >> 4)) >> 2
     }
     
     pub fn init_device(receiver: Receiver<f32>, sample_send: Sender<f32>) {
@@ -572,6 +577,20 @@ impl APU {
                     self.ch_2_envelope_counter = 0;
                 }
             }
+
+            if self.ch_4_envelope_pace != 0 {
+                self.ch_4_envelope_counter += 1;
+                if self.ch_4_envelope_counter == self.ch_4_envelope_pace {
+                    if self.ch_4_envelope_increases && self.ch_4_volume < 0xF {
+                        self.ch_4_volume += 1;
+                    }
+                    else if !self.ch_4_envelope_increases && self.ch_4_volume > 0x0 {
+                        self.ch_4_volume -= 1;
+                    }
+
+                    self.ch_4_envelope_counter = 0;
+                }
+            }
         }
 
         let will_update_length_timer;
@@ -599,6 +618,13 @@ impl APU {
                 self.ch_3_length_counter += 1;
                 if self.ch_3_length_counter == 0 {
                     self.disable_ch_3();
+                }
+            }
+
+            if self.ch_4_4_length_enable && self.ch_4_length_counter < 64 {
+                self.ch_4_length_counter += 1;
+                if self.ch_4_length_counter == 64 {
+                    self.disable_ch_4();
                 }
             }
         }
@@ -751,6 +777,29 @@ impl APU {
                 }
                 else {
                     //TODO what to do when dac is on and channel is off
+                }
+            }
+
+            if self.dac_4_enable {
+                if self.ch_4_enable {
+                    if self.ch_4_period_counter == 0 {
+                        self.ch_4_period_counter = self.get_ch_4_divisor();
+
+                        if (self.ch_4_lfsr & 0b1) ^ ((self.ch_4_lfsr & 0b10) >> 1) != 0 {
+                            let bits_to_set = if self.ch_4_3_randomness & 0b1000 != 0 {0x8080} else {0x8000};
+                            self.ch_4_lfsr &= !bits_to_set;
+                            self.ch_4_lfsr |= bits_to_set;
+                        }
+                        self.ch_4_lfsr >>= 1;
+
+                        self.dac_4_signal = if self.ch_4_lfsr & 0b1 != 0 {0.0} else {1.0};
+                    }
+                    else {
+                        self.ch_4_period_counter -= 1;
+                    }
+                }
+                else {
+                    //TODO what to do when dac is on but channel is off
                 }
             }
         }
