@@ -80,7 +80,7 @@ pub struct APU {
     ch_3_sample_index: u8,
     ch_3_length_counter: u8,
     ch_3_period_counter: u16,
-    ch_3_volume: u8,
+    ch_3_volume: f32,
 
     //Channel 4
     ch_4_lfsr: u16,
@@ -166,7 +166,7 @@ impl APU {
             ch_3_length_counter: 0,
             ch_3_period_counter: 0,
             ch_3_sample_index: 0,
-            ch_3_volume: 0,
+            ch_3_volume: 0.0,
             ch_4_envelope_counter: 0,
             ch_4_envelope_pace: 0,
             ch_4_envelope_increases: false,
@@ -349,7 +349,13 @@ impl APU {
                             self.ch_3_length_counter = self.ch_3_1_length;
                         }
                         self.ch_3_period_counter = self.ch_3_3_period;
-                        self.ch_3_volume = (self.ch_3_2_level >> 5) & 0b11;
+                        self.ch_3_volume = match (self.ch_3_2_level >> 5) & 0b11 {
+                            0b00 => 0.0,
+                            0b01 => 1.0,
+                            0b10 => 0.5,
+                            0b11 => 0.25,
+                            _ => panic!("Error: Invalid volume bits")
+                        };
                         self.ch_3_sample_index = 0;
                     }
 
@@ -441,7 +447,7 @@ impl APU {
         self.ch_3_length_counter = 0;
         self.ch_3_period_counter = 0;
         self.ch_3_sample_index = 0;
-        self.ch_3_volume = 0;
+        self.ch_3_volume = 0.0;
     }
 
     fn disable_ch_4(&mut self) {
@@ -761,15 +767,7 @@ impl APU {
                                 sample = self.wave_ram[index] & 0xF;
                             }
 
-                            let volume_shift = match self.ch_3_volume {
-                                0b00 => 4,
-                                0b01 => 0,
-                                0b10 => 1,
-                                0b11 => 2,
-                                _ => panic!("ERROR: Invalid shift bits {}", self.ch_3_2_level)
-                            };
-
-                            self.dac_3_signal = volume_to_analog(sample >> volume_shift);
+                            self.dac_3_signal = digital_to_analog(sample);
 
                             //Clock the sample index
                             self.ch_3_sample_index += 1;
@@ -828,7 +826,7 @@ impl APU {
                 right_sample += self.dac_2_signal * volume_to_analog(self.ch_2_volume);
             }
             if self.ch_5_1_panning & 0b100 != 0 {
-                right_sample += self.dac_3_signal;
+                right_sample += self.dac_3_signal * self.ch_3_volume;
             }
             if self.ch_5_1_panning & 0b1000 != 0 {
                 right_sample += self.dac_4_signal * volume_to_analog(self.ch_4_volume);
@@ -840,7 +838,7 @@ impl APU {
                 left_sample += self.dac_2_signal * volume_to_analog(self.ch_2_volume);
             }
             if self.ch_5_1_panning & 0b1000000 != 0 {
-                left_sample += self.dac_3_signal;
+                left_sample += self.dac_3_signal * self.ch_3_volume;
             }
             if self.ch_5_1_panning & 0b10000000 != 0 {
                 left_sample += self.dac_4_signal * volume_to_analog(self.ch_4_volume);
@@ -864,7 +862,7 @@ impl APU {
     }
 }
 
-fn _digital_to_analog(digital: u8) -> f32 {
+fn digital_to_analog(digital: u8) -> f32 {
     let digital = (digital & 0x0F) as f32;
     (2.0 / 15.0) * digital - 1.0
 }
