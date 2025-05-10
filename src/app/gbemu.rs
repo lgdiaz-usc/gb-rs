@@ -91,6 +91,16 @@ impl GBEmu {
 
         let mut console_output = String::new();
 
+        //Key mappings
+        let key_up = KeyType::Key(egui::Key::ArrowUp);
+        let key_down = KeyType::Key(egui::Key::ArrowDown);
+        let key_left = KeyType::Key(egui::Key::ArrowLeft);
+        let key_right = KeyType::Key(egui::Key::ArrowRight);
+        let key_start = KeyType::Key(egui::Key::Enter);
+        let key_select = KeyType::Modifier(egui::Modifiers::SHIFT);
+        let key_a = KeyType::Key(egui::Key::Z);
+        let key_b = KeyType::Key(egui::Key::X);
+
         //Enforce framerate
         let clock_speed = 4.194304;
         let speed_factor = 1;
@@ -102,6 +112,18 @@ impl GBEmu {
         '_Frame: loop {
             for _scanline in 0..154 {
                 for _cycle in 0..114 {
+                    let button_state = ButtonState {
+                        up: key_up.get_state(&frame),
+                        down: key_down.get_state(&frame),
+                        left: key_left.get_state(&frame),
+                        right: key_right.get_state(&frame),
+                        start: key_start.get_state(&frame),
+                        select: key_select.get_state(&frame),
+                        a: key_a.get_state(&frame),
+                        b: key_b.get_state(&frame)
+                    };
+                    console.set_buttons(button_state);
+
                     if cpu_delay == 255 {
                         cpu_delay = console.handle_interrupt();
                         if !console.is_halted {
@@ -228,6 +250,46 @@ impl ScreenPixel {
             self.color,
             egui::Stroke::NONE
         )
+    }
+}
+
+pub struct ButtonState {
+    up: bool,
+    down: bool,
+    left: bool,
+    right: bool,
+    start: bool,
+    select: bool,
+    a: bool,
+    b: bool,
+}
+
+impl Default for ButtonState {
+    fn default() -> Self {
+        Self { 
+            up: false, 
+            down: false, 
+            left: false, 
+            right: false, 
+            start: false, 
+            select: false, 
+            a: false, 
+            b: false 
+        }
+    }
+}
+
+enum KeyType {
+    Key(egui::Key),
+    Modifier(egui::Modifiers),
+}
+
+impl KeyType {
+    pub fn get_state(&self, ctx: &egui::Context) -> bool {
+        match self {
+            Self::Key(key) => ctx.input(|x| x.key_down(*key)),
+            Self::Modifier(modifier) => ctx.input(|x| x.modifiers.matches_logically(*modifier))
+        }
     }
 }
 

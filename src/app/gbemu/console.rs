@@ -53,6 +53,9 @@ pub struct GBConsole {
     dma: u8,
     dma_counter: u16,
 
+    //Player input register
+    joypad: u8,
+
     //Misc variables
     pub is_halted: bool,
 
@@ -118,6 +121,7 @@ impl GBConsole {
             dmg_obj_pallette_1: 0x00,
             dma: 0xFF,
             dma_counter: 0xA0 << 2,
+            joypad: 0xCF,
             is_halted: false,
             ppu: ppu::PPU::new(),
             apu: apu::APU::new(),
@@ -171,7 +175,7 @@ impl GBConsole {
         else if address < 0xFF80 {
             //TODO: Implement I/O Registers
             match address {
-                0xFF00 => 0xFF, //P1/JOYP
+                0xFF00 => self.joypad | 0b11000000, //P1/JOYP
                 0xFF01 => self.serial_byte, //SB
                 0xFF02 => self.serial_control, //SC
                 0xFF04 => (self.system_counter >> 6).to_be_bytes()[1], //DIV
@@ -261,7 +265,10 @@ impl GBConsole {
         else if address < 0xFF80 {
             //TODO: Implement I/O Registers
             let register = match address {
-                0xFF00 => return, //P1/JoyP
+                0xFF00 => { //P1/JoyP
+                    self.joypad = (self.joypad & 0xF) | (value & 0xF0);
+                    return;
+                }, 
                 0xFF01 => { //SB
                     if self.serial_control & 0x80 > 0 {
                         return;
@@ -534,6 +541,29 @@ impl GBConsole {
     
     pub fn dump_screen(&self) -> &[[Pixel; 160]; 144] {
         self.ppu.dump_screen()
+    }
+
+    pub fn set_buttons(&mut self, button_state: super::ButtonState) {
+        let joypad_before = self.joypad;
+
+        self.joypad |= 0xF;
+
+        if (self.joypad & 0b100000 == 0 && button_state.start) || (self.joypad & 0b10000 == 0 && button_state.down) {
+            self.joypad ^= 0b1000;
+        }
+        if (self.joypad & 0b100000 == 0 && button_state.select) || (self.joypad & 0b10000 == 0 && button_state.up) {
+            self.joypad ^= 0b100;
+        }
+        if (self.joypad & 0b100000 == 0 && button_state.b) || (self.joypad & 0b10000 == 0 && button_state.left) {
+            self.joypad ^= 0b10;
+        }
+        if (self.joypad & 0b100000 == 0 && button_state.a) || (self.joypad & 0b10000 == 0 && button_state.right) {
+            self.joypad ^= 0b1;
+        }
+
+        if (joypad_before & !self.joypad) & 0xF != 0 {
+            self.interrupt_flag |= 0b10000;
+        }
     }
 
     pub fn execute_instruction(&mut self) -> u8 {
