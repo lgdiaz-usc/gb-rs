@@ -143,7 +143,10 @@ impl GBEmu {
                     console.update_timer();
 
                     for _dot in 0..4 {
-                        console.update_ppu();
+                        if console.update_ppu() {
+                            self.draw_new_frame(&frame, &console);
+                        }
+
                         if let Some(serial_output) = console.check_serial() {
                             console_output.push((serial_output as char).to_ascii_uppercase());
                         }                        
@@ -159,51 +162,53 @@ impl GBEmu {
 
             print!("{}", console_output);
             console_output.clear();
-
-            let internal_screen = console.dump_screen();
-            let mut pixel_colors = Vec::new();
-            let bg_pallette = Self::dmg_pallette(console.dmg_bg_pallette);
-            let obj0_pallette = Self::dmg_pallette(console.dmg_obj_pallette_0);
-            let obj1_pallette = Self::dmg_pallette(console.dmg_obj_pallette_1);
-
-            for i in 0..144 {
-                let mut pixel_chunk = ScreenPixel { color: Color32::PLACEHOLDER, x: -1.0, y: -1.0, width: 0.0};
-                for j in 0..160 {
-                    let pixel_color = match (*internal_screen)[i][j].palette {
-                        None => bg_pallette[internal_screen[i][j].color as usize],
-                        Some(pallette) => {
-                            if pallette == 0 {
-                                obj0_pallette[internal_screen[i][j].color as usize]
-                            }
-                            else {
-                                obj1_pallette[internal_screen[i][j].color as usize]
-                            }
-                        }
-                    };
-
-                    if pixel_color != pixel_chunk.color {
-                        pixel_colors.push(pixel_chunk.clone());
-                        pixel_chunk.color = pixel_color;
-                        pixel_chunk.width = 0.0;
-                        pixel_chunk.x = j as f32;
-                        pixel_chunk.y = i as f32;
-                    }
-                    pixel_chunk.width += 1.0;
-                }
-                if pixel_chunk.width > 0.0 {
-                    pixel_colors.push(pixel_chunk.clone());
-                }
-            }
-
-            {
-                let mut lock = self.screen_pixels.lock().unwrap();
-                *lock = Some(pixel_colors);
-                drop(lock);
-            }
-            frame.request_repaint();
         }
     }
 
+    fn draw_new_frame(&self, frame: &egui::Context, console: &GBConsole) {
+        let internal_screen = console.dump_screen();
+        let mut pixel_colors = Vec::new();
+        let bg_pallette = Self::dmg_pallette(console.dmg_bg_pallette);
+        let obj0_pallette = Self::dmg_pallette(console.dmg_obj_pallette_0);
+        let obj1_pallette = Self::dmg_pallette(console.dmg_obj_pallette_1);
+    
+        for i in 0..144 {
+            let mut pixel_chunk = ScreenPixel { color: Color32::PLACEHOLDER, x: -1.0, y: -1.0, width: 0.0};
+            for j in 0..160 {
+                let pixel_color = match (*internal_screen)[i][j].palette {
+                    None => bg_pallette[internal_screen[i][j].color as usize],
+                    Some(pallette) => {
+                        if pallette == 0 {
+                            obj0_pallette[internal_screen[i][j].color as usize]
+                        }
+                        else {
+                            obj1_pallette[internal_screen[i][j].color as usize]
+                        }
+                    }
+                };
+    
+                if pixel_color != pixel_chunk.color {
+                    pixel_colors.push(pixel_chunk.clone());
+                    pixel_chunk.color = pixel_color;
+                    pixel_chunk.width = 0.0;
+                    pixel_chunk.x = j as f32;
+                    pixel_chunk.y = i as f32;
+                }
+                pixel_chunk.width += 1.0;
+            }
+            if pixel_chunk.width > 0.0 {
+                pixel_colors.push(pixel_chunk.clone());
+            }
+        }
+    
+        {
+            let mut lock = self.screen_pixels.lock().unwrap();
+            *lock = Some(pixel_colors);
+            drop(lock);
+        }
+        frame.request_repaint();
+    }
+    
     fn dmg_pallette(console_pallette: u8) -> [Color32; 4] {
         let mut pallette = [Color32::WHITE; 4];
 

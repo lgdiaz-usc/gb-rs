@@ -416,7 +416,7 @@ impl GBConsole {
         0
     }
 
-    pub fn update_ppu(&mut self) {
+    pub fn update_ppu(&mut self) -> bool {
         if self.dma_counter < 0xA0 << 2 {
             if self.dma_counter & 0b11 == 0 {
                 let lsb = u16::to_be_bytes(self.dma_counter >> 2)[1];
@@ -445,7 +445,8 @@ impl GBConsole {
                                stat & 0b1000100 == 0b1000100; //LYC check is selected and LY == LYC
 
         //If in VBLANK mode, set VBLANK flag
-        if self.ppu.has_entered_vblank() {
+        let has_entered_vblank = self.ppu.has_entered_vblank();
+        if has_entered_vblank {
             self.interrupt_flag |= 0b1;
             if stat & 0b100000 != 0 {
                 self.interrupt_flag |= 0b10;
@@ -457,6 +458,7 @@ impl GBConsole {
             self.interrupt_flag |= 0b10;
         }
         
+        has_entered_vblank
     }
 
     pub fn update_apu(&mut self) {
@@ -499,7 +501,6 @@ impl GBConsole {
         self.system_counter += 1;
 
         self.timer_tick(system_counter_before, self.timer_control);
-        let _balls = 0;
     }
 
     fn timer_tick(&mut self, system_counter_before: u16, timer_control_before: u8) {
