@@ -108,6 +108,8 @@ impl GBEmu {
         let cycle_time = Duration::from_nanos((4000_f64 / clock_speed).round() as u64 * speed_factor);
         let mut next_cycle = Instant::now() + cycle_time;
 
+        let mut frame_time = Instant::now();
+
         let mut cpu_delay = 255;
         '_Frame: loop {
             for _scanline in 0..154 {
@@ -145,6 +147,11 @@ impl GBEmu {
                     for _dot in 0..4 {
                         if console.update_ppu() {
                             self.draw_new_frame(&frame, &console);
+                            
+                            if true {
+                                println!("{:?}", Instant::now() - frame_time);
+                            }
+                            frame_time = Instant::now();
                         }
 
                         if let Some(serial_output) = console.check_serial() {
