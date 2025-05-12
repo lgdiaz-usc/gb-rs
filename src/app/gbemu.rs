@@ -101,6 +101,8 @@ impl GBEmu {
         let key_a = KeyType::Key(egui::Key::Z);
         let key_b = KeyType::Key(egui::Key::X);
 
+        let mut button_state = ButtonState::default();
+
         //Enforce framerate
         let clock_speed = 4.194304;
         let speed_factor = 1;
@@ -114,17 +116,7 @@ impl GBEmu {
         '_Frame: loop {
             for _scanline in 0..154 {
                 for _cycle in 0..114 {
-                    let button_state = ButtonState {
-                        up: key_up.get_state(&frame),
-                        down: key_down.get_state(&frame),
-                        left: key_left.get_state(&frame),
-                        right: key_right.get_state(&frame),
-                        start: key_start.get_state(&frame),
-                        select: key_select.get_state(&frame),
-                        a: key_a.get_state(&frame),
-                        b: key_b.get_state(&frame)
-                    };
-                    console.set_buttons(button_state);
+                    console.set_buttons(button_state.clone());
 
                     if cpu_delay == 255 {
                         cpu_delay = console.handle_interrupt();
@@ -152,6 +144,17 @@ impl GBEmu {
                                 println!("{:?}", Instant::now() - frame_time);
                             }
                             frame_time = Instant::now();
+
+                            button_state = ButtonState {
+                                up: key_up.get_state(&frame),
+                                down: key_down.get_state(&frame),
+                                left: key_left.get_state(&frame),
+                                right: key_right.get_state(&frame),
+                                start: key_start.get_state(&frame),
+                                select: key_select.get_state(&frame),
+                                a: key_a.get_state(&frame),
+                                b: key_b.get_state(&frame)
+                            };
                         }
 
                         if let Some(serial_output) = console.check_serial() {
@@ -265,6 +268,7 @@ impl ScreenPixel {
     }
 }
 
+#[derive(Clone)]
 pub struct ButtonState {
     up: bool,
     down: bool,
