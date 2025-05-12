@@ -56,8 +56,14 @@ pub struct GBConsole {
     //Player input register
     joypad: u8,
 
+    //Input keys
+    button_list: super::ButtonList,
+
     //Misc variables
     pub is_halted: bool,
+
+    //Frame access
+    ctx: egui::Context,
 
     //External objects
     ppu: PPU,
@@ -69,7 +75,7 @@ const N_SUBTRACTION_FLAG: u8 = 64;
 const H_HALF_CARRY_FLAG: u8 = 32;
 const C_CARRY_FLAG: u8 = 16;
 impl GBConsole {
-    pub fn new(info: CartridgeInfo, file: Bytes<File>) -> Self {
+    pub fn new(info: CartridgeInfo, file: Bytes<File>, ctx: egui::Context, button_list: super::ButtonList) -> Self {
         let cartridge: Mapper = match info.cartridge_type {
             0x00 => {
                 //TODO: Figure out if any rom only games actually utilize external RAM and implement here
@@ -122,13 +128,15 @@ impl GBConsole {
             dma: 0xFF,
             dma_counter: 0xA0 << 2,
             joypad: 0xCF,
+            button_list: button_list,
             is_halted: false,
+            ctx: ctx,
             ppu: ppu::PPU::new(),
             apu: apu::APU::new(),
         }
     }
 
-    fn read(&self, address: u16) -> u8 {
+    fn read(&mut self, address: u16) -> u8 {
         //Cartrige ROM
         if address < 0x8000 {
             self.cartridge.read(address)
@@ -175,7 +183,10 @@ impl GBConsole {
         else if address < 0xFF80 {
             //TODO: Implement I/O Registers
             match address {
-                0xFF00 => self.joypad | 0b11000000, //P1/JOYP
+                0xFF00 => { //P1/JOYP
+                    self.set_buttons();
+                    self.joypad | 0b11000000
+                },
                 0xFF01 => self.serial_byte, //SB
                 0xFF02 => self.serial_control, //SC
                 0xFF04 => (self.system_counter >> 6).to_be_bytes()[1], //DIV
@@ -214,7 +225,7 @@ impl GBConsole {
         }
     }
 
-    fn read_16(&self, address: u16) -> u16 {
+    fn read_16(&mut self, address: u16) -> u16 {
         if address == 0xFFFF {
             panic!("ERROR: Address out of bounds");
         }
@@ -544,21 +555,21 @@ impl GBConsole {
         self.ppu.dump_screen()
     }
 
-    pub fn set_buttons(&mut self, button_state: super::ButtonState) {
+    fn set_buttons(&mut self) {
         let joypad_before = self.joypad;
 
         self.joypad |= 0xF;
 
-        if (self.joypad & 0b100000 == 0 && button_state.start) || (self.joypad & 0b10000 == 0 && button_state.down) {
+        if (self.joypad & 0b100000 == 0 && self.button_list.start.get_state(&self.ctx)) || (self.joypad & 0b10000 == 0 && self.button_list.down.get_state(&self.ctx)) {
             self.joypad ^= 0b1000;
         }
-        if (self.joypad & 0b100000 == 0 && button_state.select) || (self.joypad & 0b10000 == 0 && button_state.up) {
+        if (self.joypad & 0b100000 == 0 && self.button_list.select.get_state(&self.ctx)) || (self.joypad & 0b10000 == 0 && self.button_list.up.get_state(&self.ctx)) {
             self.joypad ^= 0b100;
         }
-        if (self.joypad & 0b100000 == 0 && button_state.b) || (self.joypad & 0b10000 == 0 && button_state.left) {
+        if (self.joypad & 0b100000 == 0 && self.button_list.b.get_state(&self.ctx)) || (self.joypad & 0b10000 == 0 && self.button_list.left.get_state(&self.ctx)) {
             self.joypad ^= 0b10;
         }
-        if (self.joypad & 0b100000 == 0 && button_state.a) || (self.joypad & 0b10000 == 0 && button_state.right) {
+        if (self.joypad & 0b100000 == 0 && self.button_list.a.get_state(&self.ctx)) || (self.joypad & 0b10000 == 0 && self.button_list.right.get_state(&self.ctx)) {
             self.joypad ^= 0b1;
         }
 
@@ -1679,7 +1690,7 @@ impl GBConsole {
         cycle_count
     }
 
-    pub fn get_instruction_delay(&self) -> u8 {
+    pub fn get_instruction_delay(&mut self) -> u8 {
         let opcode = self.read(self.program_counter);
 
         if false {
@@ -1862,7 +1873,7 @@ impl GBConsole {
 
     }
 
-    fn debug_message(&self, opcode: u8) {
+    fn debug_message(&mut self, opcode: u8) {
         let instruction = match opcode {
             0o000 => format!("NOP"),
             0o010 => format!("LD [{:x}], SP", self.read_16(self.program_counter + 1)),
