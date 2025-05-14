@@ -179,7 +179,7 @@ impl APU {
             dac_2_signal: 0.0,
             dac_3_signal: 0.0,
             dac_4_signal: 0.0,
-            gb_sample_rate: (M_CYCLE_RATE / sample_rate).trunc(),
+            gb_sample_rate: (M_CYCLE_RATE / sample_rate).ceil(),
             gb_sample_counter: 0.0,
             sender
         }
