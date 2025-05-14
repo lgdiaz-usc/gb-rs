@@ -818,6 +818,8 @@ impl APU {
             let mut left_sample = 0.0;
             let mut right_sample = 0.0;
 
+            const CH_3_REDUCTION: f32 = 0.25;
+
             //Mixing and Panning
             if self.ch_5_1_panning & 0b1 != 0 {
                 right_sample += self.dac_1_signal * volume_to_analog(self.ch_1_volume);
@@ -826,7 +828,7 @@ impl APU {
                 right_sample += self.dac_2_signal * volume_to_analog(self.ch_2_volume);
             }
             if self.ch_5_1_panning & 0b100 != 0 {
-                right_sample += self.dac_3_signal * self.ch_3_volume;
+                right_sample += self.dac_3_signal * self.ch_3_volume * CH_3_REDUCTION;
             }
             if self.ch_5_1_panning & 0b1000 != 0 {
                 right_sample += self.dac_4_signal * volume_to_analog(self.ch_4_volume);
@@ -838,7 +840,7 @@ impl APU {
                 left_sample += self.dac_2_signal * volume_to_analog(self.ch_2_volume);
             }
             if self.ch_5_1_panning & 0b1000000 != 0 {
-                left_sample += self.dac_3_signal * self.ch_3_volume;
+                left_sample += self.dac_3_signal * self.ch_3_volume * CH_3_REDUCTION;
             }
             if self.ch_5_1_panning & 0b10000000 != 0 {
                 left_sample += self.dac_4_signal * volume_to_analog(self.ch_4_volume);

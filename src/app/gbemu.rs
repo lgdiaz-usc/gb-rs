@@ -233,8 +233,8 @@ impl ScreenPixel {
         let min_x = x_offset + (pixel_width * self.x);
         let min_y = y_offset + (pixel_height * self.y);
     
-        let max_x = min_x + (pixel_width * self.width);
-        let max_y = min_y + pixel_height;
+        let max_x = min_x + (pixel_width * self.width) + 1.0;
+        let max_y = min_y + pixel_height + 1.0;
         
         egui::epaint::RectShape::new(
             egui::Rect {
