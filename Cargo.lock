@@ -3,21 +3,6 @@
 version = 3
 
 [[package]]
-name = "GB-rs"
-version = "0.1.0"
-dependencies = [
- "cpal",
- "eframe",
- "egui",
- "env_logger",
- "log",
- "rfd",
- "serde",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
 name = "ab_glyph"
 version = "0.2.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1462,6 +1447,21 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
  "slab",
+]
+
+[[package]]
+name = "gb_rs"
+version = "0.1.0"
+dependencies = [
+ "cpal",
+ "eframe",
+ "egui",
+ "env_logger",
+ "log",
+ "rfd",
+ "serde",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

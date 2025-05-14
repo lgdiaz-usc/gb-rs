@@ -1,5 +1,5 @@
 [package]
-name = "GB-rs"
+name = "gb_rs"
 version = "0.1.0"
 authors = ["Liam Diaz <liamdiaz41@gmail.com>"]
 edition = "2021"
