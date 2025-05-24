@@ -91,7 +91,7 @@ impl GBEmu {
         //TODO: Get and apply configs for keymaps
         let button_list = ButtonList::default(); 
 
-        let mut console = GBConsole::new(info, rom_file, frame.clone(), button_list);
+        let mut console = GBConsole::new(info, rom_file, current_file_path, frame.clone(), button_list,);
 
         let mut console_output = String::new();
 
@@ -131,7 +131,7 @@ impl GBEmu {
                         if console.update_ppu() {
                             self.draw_new_frame(&frame, &console);
                             
-                            if true {
+                            if false {
                                 println!("{:?}", Instant::now() - frame_time);
                             }
                             frame_time = Instant::now();
