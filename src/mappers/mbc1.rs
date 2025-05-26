@@ -1,4 +1,4 @@
-use std::{fs::File, io::{BufWriter, Bytes, Read}, sync::mpsc::{channel, Sender}};
+use std::{fs::{File, OpenOptions}, io::{BufWriter, Bytes, Read}, sync::mpsc::{channel, Sender}};
 
 pub struct MBC1 {
     rom_banks: Vec<[u8; 0x4000]>,
@@ -45,7 +45,11 @@ impl MBC1 {
                     }
                 }
 
-                let save_file = BufWriter::new(File::create(ram_file_path).unwrap());
+                let save_file = BufWriter::new(OpenOptions::new()
+                                                                .write(true)
+                                                                .create(true)
+                                                                .open(ram_file_path)
+                                                                .unwrap());
                 let (save_sender, save_receiver) = channel();
                 super::mapper::write_thread(save_file, save_receiver);
 
