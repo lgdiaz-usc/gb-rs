@@ -1,5 +1,3 @@
-use std::{fs::File, io::Bytes};
-
 use crate::{app::cartridge_info::CartridgeInfo, mappers::{Mapper, NoMBC, MBC1}};
 
 use super::{apu::{self, APU}, ppu::{self, Pixel, PPU}};
@@ -75,18 +73,17 @@ const N_SUBTRACTION_FLAG: u8 = 64;
 const H_HALF_CARRY_FLAG: u8 = 32;
 const C_CARRY_FLAG: u8 = 16;
 impl GBConsole {
-    pub fn new(info: CartridgeInfo, file: Bytes<File>, file_path: String, ctx: egui::Context, button_list: super::ButtonList) -> Self {
+    pub fn new(info: CartridgeInfo, file_path: String, ctx: egui::Context, button_list: super::ButtonList) -> Self {
         let cartridge: Mapper = match info.cartridge_type {
             0x00 => {
                 //TODO: Figure out if any rom only games actually utilize external RAM and implement here
-                let rom_bank = NoMBC::prepare_rom(file);
-                Mapper::NoMBC(NoMBC::new(rom_bank, false))
+                Mapper::NoMBC(NoMBC::new(file_path, false))
             }
             0x01 | 0x02 | 0x03 => {
                 let ram_bank_count = if info.cartridge_type == 0x01 {0} else {info.ram_banks as u8};
                 let has_battery = info.cartridge_type == 0x03;
-                let rom_banks = MBC1::prepare_rom(file, info.rom_banks as u8);
-                Mapper::MBC1(MBC1::new(rom_banks, ram_bank_count, has_battery, file_path))
+                let rom_bank_count = info.rom_banks as u8;
+                Mapper::MBC1(MBC1::new(rom_bank_count, ram_bank_count, has_battery, file_path))
             }
             _ => panic!("Error: Unknown cartridge code: {}", info.cartridge_type)
         };

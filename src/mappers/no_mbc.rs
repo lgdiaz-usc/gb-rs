@@ -1,4 +1,4 @@
-use std::{fs::File, io::Bytes};
+use std::{fs::File, io::{Bytes, Read}};
 
 pub struct NoMBC {
     rom_bank: [u8; 0x8000],
@@ -6,7 +6,9 @@ pub struct NoMBC {
 }
 
 impl NoMBC {
-    pub fn new(rom_bank: [u8; 0x8000], has_ram: bool) -> Self {
+    pub fn new(rom_file_path: String, has_ram: bool) -> Self {
+        let rom_file = File::open(rom_file_path).unwrap().bytes();
+        let rom_bank = Self::prepare_rom(rom_file);
         Self {
             rom_bank: rom_bank,
             ram_bank: if has_ram {Some([0; 0x2000])} else {None}

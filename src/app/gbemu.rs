@@ -86,12 +86,11 @@ impl GBEmu {
         }
 
         drop(rom_file);
-        let rom_file = File::open(current_file_path.clone()).expect("ERROR: File not found!").bytes();
 
         //TODO: Get and apply configs for keymaps
         let button_list = ButtonList::default(); 
 
-        let mut console = GBConsole::new(info, rom_file, current_file_path, frame.clone(), button_list,);
+        let mut console = GBConsole::new(info, current_file_path, frame.clone(), button_list,);
 
         let mut console_output = String::new();
 
