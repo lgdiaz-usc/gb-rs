@@ -1,10 +1,11 @@
 use std::{fs::File, io::{BufWriter, Seek, Write}, sync::mpsc::Receiver, thread};
 
-use super::{MBC1, NoMBC};
+use super::{MBC1, MBC2, NoMBC};
 
 pub enum Mapper {
     NoMBC(NoMBC),
     MBC1(MBC1),
+    MBC2(MBC2),
 }
 
 impl Mapper {
@@ -12,6 +13,7 @@ impl Mapper {
         match self {
             Self::NoMBC(mapper) => mapper.read(address),
             Self::MBC1(mapper) => mapper.read(address),
+            Self::MBC2(mapper) => mapper.read(address),
         }
     }
 
@@ -19,6 +21,7 @@ impl Mapper {
         match self {
             Self::NoMBC(mapper) => mapper.write(address, value),
             Self::MBC1(mapper) => mapper.write(address, value),
+            Self::MBC2(mapper) => mapper.write(address, value),
         }
     }
 }

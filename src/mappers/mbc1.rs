@@ -10,7 +10,7 @@ pub struct MBC1 {
 }
 
 impl MBC1 {
-    pub fn new(rom_bank_count: u8, ram_bank_count: u8, has_battery: bool, rom_file_path: String) -> Self {
+    pub fn new(rom_bank_count: usize, ram_bank_count: usize, has_battery: bool, rom_file_path: String) -> Self {
         let mut save_sender_temp = None;
         let ram_banks;
         if ram_bank_count == 0 {
@@ -105,6 +105,7 @@ impl MBC1 {
             let mut temp_index = (value & 0b11111) as usize;
             if temp_index == 0 {
                 self.aux_rom_bank_index = 1;
+                return;
             }
 
             if temp_index > self.rom_banks.len() {
@@ -135,7 +136,7 @@ impl MBC1 {
         }
     }
 
-    pub fn prepare_rom(mut file: Bytes<File>, rom_bank_count: u8) -> Vec<[u8; 0x4000]> {
+    pub fn prepare_rom(mut file: Bytes<File>, rom_bank_count: usize) -> Vec<[u8; 0x4000]> {
         let mut rom_data: Vec<[u8; 0x4000]> = Vec::new();
         
         for _ in 0..rom_bank_count {

@@ -1,4 +1,4 @@
-use crate::{app::cartridge_info::CartridgeInfo, mappers::{Mapper, NoMBC, MBC1}};
+use crate::{app::cartridge_info::CartridgeInfo, mappers::{Mapper, NoMBC, MBC1, MBC2}};
 
 use super::{apu::{self, APU}, ppu::{self, Pixel, PPU}};
 
@@ -80,10 +80,15 @@ impl GBConsole {
                 Mapper::NoMBC(NoMBC::new(file_path, false))
             }
             0x01 | 0x02 | 0x03 => {
-                let ram_bank_count = if info.cartridge_type == 0x01 {0} else {info.ram_banks as u8};
+                let ram_bank_count = info.ram_banks;
                 let has_battery = info.cartridge_type == 0x03;
-                let rom_bank_count = info.rom_banks as u8;
+                let rom_bank_count = info.rom_banks;
                 Mapper::MBC1(MBC1::new(rom_bank_count, ram_bank_count, has_battery, file_path))
+            }
+            0x05 | 0x06 => {
+                let has_battery = info.cartridge_type == 0x06;
+                let rom_bank_count = info.rom_banks;
+                Mapper::MBC2(MBC2::new(rom_bank_count, has_battery, file_path))
             }
             _ => panic!("Error: Unknown cartridge code: {}", info.cartridge_type)
         };
