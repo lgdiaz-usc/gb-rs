@@ -1,29 +1,8 @@
 use std::{fs::File, io::{BufWriter, Seek, Write}, sync::mpsc::Receiver, thread};
 
-use super::{MBC1, MBC2, NoMBC};
-
-pub enum Mapper {
-    NoMBC(NoMBC),
-    MBC1(MBC1),
-    MBC2(MBC2),
-}
-
-impl Mapper {
-    pub fn read(&self, address: u16) -> u8 {
-        match self {
-            Self::NoMBC(mapper) => mapper.read(address),
-            Self::MBC1(mapper) => mapper.read(address),
-            Self::MBC2(mapper) => mapper.read(address),
-        }
-    }
-
-    pub fn write(&mut self, address: u16, value: u8) {
-        match self {
-            Self::NoMBC(mapper) => mapper.write(address, value),
-            Self::MBC1(mapper) => mapper.write(address, value),
-            Self::MBC2(mapper) => mapper.write(address, value),
-        }
-    }
+pub trait Mapper {
+    fn read(&self, address: u16) -> u8;
+    fn write(&mut self, address: u16, value: u8);
 }
 
 pub fn write_thread(mut file: BufWriter<File>, data_receiver: Receiver<(u8, u64)>) {

@@ -16,7 +16,7 @@ pub struct GBConsole {
     program_counter: u16,
 
     //Cartridge ROM and RAM
-    cartridge: Mapper,
+    cartridge: Box<dyn Mapper>,
 
     //Console RAM
     working_ram: [u8; 0x2000],
@@ -74,21 +74,21 @@ const H_HALF_CARRY_FLAG: u8 = 32;
 const C_CARRY_FLAG: u8 = 16;
 impl GBConsole {
     pub fn new(info: CartridgeInfo, file_path: String, ctx: egui::Context, button_list: super::ButtonList) -> Self {
-        let cartridge: Mapper = match info.cartridge_type {
+        let cartridge: Box<dyn Mapper> = match info.cartridge_type {
             0x00 => {
                 //TODO: Figure out if any rom only games actually utilize external RAM and implement here
-                Mapper::NoMBC(NoMBC::new(file_path, false))
+                Box::new(NoMBC::new(file_path, false))
             }
             0x01 | 0x02 | 0x03 => {
                 let ram_bank_count = info.ram_banks;
                 let has_battery = info.cartridge_type == 0x03;
                 let rom_bank_count = info.rom_banks;
-                Mapper::MBC1(MBC1::new(rom_bank_count, ram_bank_count, has_battery, file_path))
+                Box::new(MBC1::new(rom_bank_count, ram_bank_count, has_battery, file_path))
             }
             0x05 | 0x06 => {
                 let has_battery = info.cartridge_type == 0x06;
                 let rom_bank_count = info.rom_banks;
-                Mapper::MBC2(MBC2::new(rom_bank_count, has_battery, file_path))
+                Box::new(MBC2::new(rom_bank_count, has_battery, file_path))
             }
             _ => panic!("Error: Unknown cartridge code: {}", info.cartridge_type)
         };

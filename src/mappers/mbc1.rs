@@ -74,7 +74,30 @@ impl MBC1 {
         }
     }
 
-    pub fn read(&self, address: u16) -> u8 {
+    pub fn prepare_rom(mut file: Bytes<File>, rom_bank_count: usize) -> Vec<[u8; 0x4000]> {
+        let mut rom_data: Vec<[u8; 0x4000]> = Vec::new();
+        
+        for _ in 0..rom_bank_count {
+            let mut rom_bank = [0; 0x4000];
+            let mut iter = 0..0x4000;
+            while let Some(i) = iter.next() {
+                rom_bank[i] = match file.next() {
+                    Some(val) => val.expect("Invalid byte?"),
+                    None => {
+                        panic!("Invalid rom size!")
+                    },
+                };
+            }
+    
+            rom_data.push(rom_bank);
+        }
+    
+        rom_data
+    }
+}
+
+impl super::Mapper for MBC1 {
+    fn read(&self, address: u16) -> u8 {
         if address <= 0x3FFF {
             self.rom_banks[0][address as usize]
         }
@@ -97,7 +120,7 @@ impl MBC1 {
         }
     }
 
-    pub fn write(&mut self, address: u16, value: u8) {
+    fn write(&mut self, address: u16, value: u8) {
         if address <= 0x1FFF {
             self.ram_enabled = value & 0xF == 0xA;
         }
@@ -134,27 +157,6 @@ impl MBC1 {
         else {
             panic!("Error:: Index out of bounds")
         }
-    }
-
-    pub fn prepare_rom(mut file: Bytes<File>, rom_bank_count: usize) -> Vec<[u8; 0x4000]> {
-        let mut rom_data: Vec<[u8; 0x4000]> = Vec::new();
-        
-        for _ in 0..rom_bank_count {
-            let mut rom_bank = [0; 0x4000];
-            let mut iter = 0..0x4000;
-            while let Some(i) = iter.next() {
-                rom_bank[i] = match file.next() {
-                    Some(val) => val.expect("Invalid byte?"),
-                    None => {
-                        panic!("Invalid rom size!")
-                    },
-                };
-            }
-    
-            rom_data.push(rom_bank);
-        }
-    
-        rom_data
     }
 }
 
