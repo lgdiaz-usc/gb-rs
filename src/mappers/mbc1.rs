@@ -3,8 +3,8 @@ use std::{fs::{File, OpenOptions}, io::{BufWriter, Bytes, Read}, sync::mpsc::{ch
 pub struct MBC1 {
     rom_banks: Vec<[u8; 0x4000]>,
     aux_rom_bank_index: usize,
-    ram_banks: Option<Vec<[u8; 0x2000]>>,
-    ram_bank_index: usize,
+    ram_banks: Option<Vec<u8>>,
+    ram_bank_offset: usize,
     save_sender: Option<Sender<(u8, u64)>>,
     ram_enabled: bool,
 }
@@ -21,7 +21,7 @@ impl MBC1 {
             
             let mut fill_with_0s = || { 
                 for _ in 0..ram_bank_count {
-                    ram_bank_vec.push([0; 0x2000]);
+                    ram_bank_vec.extend_from_slice(&[0; 0x2000]);
                 }
             };
 
@@ -33,7 +33,7 @@ impl MBC1 {
                         for _ in 0..ram_bank_count {
                             let mut ram_bank = [0; 0x2000];
                             file.read(&mut ram_bank).unwrap();
-                            ram_bank_vec.push(ram_bank);
+                            ram_bank_vec.extend_from_slice(&ram_bank);
                         }
                     }
                     Err(e) => {
@@ -68,7 +68,7 @@ impl MBC1 {
             rom_banks: rom_banks,
             aux_rom_bank_index: 1,
             ram_banks: ram_banks,
-            ram_bank_index: 0,
+            ram_bank_offset: 0,
             save_sender: save_sender_temp,
             ram_enabled: true
         }
@@ -107,7 +107,7 @@ impl super::Mapper for MBC1 {
         else if address >= 0xA000 && address <= 0xBFFF {
             if self.ram_enabled {
                 match &self.ram_banks {
-                    Some(ram_banks) => ram_banks[self.ram_bank_index][(address - 0xA000) as usize],
+                    Some(ram_banks) => ram_banks[self.ram_bank_offset + (address - 0xA000) as usize],
                     None => 0xFF //I'm not sure what happens when you try to read ram without having it, so I'm having it act like disabled ram
                 }
             }
@@ -138,7 +138,7 @@ impl super::Mapper for MBC1 {
             self.aux_rom_bank_index = temp_index;
         }
         else if address <= 0x5FFF {
-            self.ram_bank_index = (value & 0b11) as usize;
+            self.ram_bank_offset = (value & 0b11) as usize * 0x2000;
         }
         else if address <= 0x7FFF {
             return;
@@ -146,10 +146,11 @@ impl super::Mapper for MBC1 {
         else if address >= 0xA000 && address <= 0xBFFF {
             if self.ram_enabled {
                 if self.ram_banks != None {
-                    self.ram_banks.as_mut().unwrap()[self.ram_bank_index][(address - 0xA000) as usize] = value;
+                    let address = self.ram_bank_offset + (address - 0xA000) as usize;
+                    self.ram_banks.as_mut().unwrap()[address] = value;
                     
                     if let Some(sender) = &self.save_sender {
-                        sender.send((value, translate_address(address, self.ram_bank_index))).unwrap();
+                        sender.send((value, address as u64)).unwrap();
                     }
                 }
             }
@@ -158,8 +159,4 @@ impl super::Mapper for MBC1 {
             panic!("Error:: Index out of bounds")
         }
     }
-}
-
-fn translate_address(gb_address: u16, ram_bank_index: usize) -> u64 {
-    ((gb_address - 0xA000) as u64) + (ram_bank_index as u64 * 0x2000)
 }
