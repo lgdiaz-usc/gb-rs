@@ -179,7 +179,7 @@ impl APU {
             dac_2_signal: 0.0,
             dac_3_signal: 0.0,
             dac_4_signal: 0.0,
-            gb_sample_rate: (M_CYCLE_RATE / sample_rate).ceil(),
+            gb_sample_rate: (M_CYCLE_RATE / sample_rate),
             gb_sample_counter: 0.0,
             sender
         }
@@ -807,7 +807,7 @@ impl APU {
         }
 
         self.gb_sample_counter += 1.0;
-        if self.gb_sample_counter == self.gb_sample_rate {
+        if self.gb_sample_counter >= self.gb_sample_rate {
             //if the APU is disabled, only play silence 
             if !self.ch_5_2_enable {
                 self.sender.send(0.0).unwrap();
@@ -859,7 +859,7 @@ impl APU {
             self.sender.send(left_sample).unwrap();
             self.sender.send(right_sample).unwrap();
 
-            self.gb_sample_counter = 0.0;
+            self.gb_sample_counter -= self.gb_sample_rate;
         }
     }
 }
