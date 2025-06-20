@@ -325,7 +325,7 @@ impl PPU {
                         }
                     }
                 }
-                else if self.obj_fetch_state == 5 { //Fetch tile data
+                else if self.obj_fetch_state == 4 { //Fetch tile data
                     let mut pixel_row = self.tile_fetch_obj(self.fetched_obj_address);
 
                     if self.lx == 0 {
@@ -357,6 +357,7 @@ impl PPU {
                     }
                     self.obj_fifo.extend(pixel_row);
                     self.obj_fetch_state = 7;
+                    self.bg_fetch_state = 0;
                 }
                 else {
                     self.obj_fetch_state += 1;
