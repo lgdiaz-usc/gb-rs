@@ -559,7 +559,7 @@ impl GBConsole {
         }
     }
     
-    pub fn dump_screen(&self) -> &[[Pixel; 160]; 144] {
+    pub fn dump_screen(&mut self) -> [[Pixel; 160]; 144] {
         self.ppu.dump_screen()
     }
 

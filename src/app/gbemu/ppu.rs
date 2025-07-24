@@ -33,7 +33,7 @@ pub struct PPU {
     obj_buffer: Vec<u16>,
     bg_fifo: VecDeque<Pixel>,
     obj_fifo: VecDeque<Pixel>,
-    screen: [[Pixel; 160]; 144],
+    screen: Box<[[Pixel; 160]; 144]>,
 
     //Misc. variables
     dot_counter: u16, //The current dot on the current scanline;
@@ -82,7 +82,7 @@ impl PPU {
             obj_buffer: Vec::with_capacity(10),
             bg_fifo: VecDeque::with_capacity(8),
             obj_fifo: VecDeque::with_capacity(8),
-            screen: [[Pixel {color: 0, palette: None, bg_priority: None, tile: None}; 160]; 144],
+            screen: Box::new([[Pixel {color: 0, palette: None, bg_priority: None, tile: None}; 160]; 144]),
             dot_counter: 0,
             mode_3_penalty: 0,
             bg_fetch_state: 250,
@@ -555,8 +555,11 @@ impl PPU {
         self.object_attribute_memory[address as usize] = value;
     }
 
-    pub fn dump_screen(&self) -> &[[Pixel; 160]; 144] {
-        &self.screen
+    pub fn dump_screen(&mut self) -> [[Pixel; 160]; 144] {
+        let mut temp = Box::new([[Pixel {color: 0, palette: None, bg_priority: None, tile: None}; 160]; 144]);
+        std::mem::swap(&mut self.screen, &mut temp);
+
+        *temp
     }
 }
 

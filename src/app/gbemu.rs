@@ -128,7 +128,7 @@ impl GBEmu {
 
                     for _dot in 0..4 {
                         if console.update_ppu() {
-                            self.draw_new_frame(&frame, &console);
+                            self.draw_new_frame(&frame, &mut console);
                             
                             if false {
                                 println!("{:?}", Instant::now() - frame_time);
@@ -154,7 +154,7 @@ impl GBEmu {
         }
     }
 
-    fn draw_new_frame(&self, frame: &egui::Context, console: &GBConsole) {
+    fn draw_new_frame(&self, frame: &egui::Context, console: &mut GBConsole) {
         let internal_screen = console.dump_screen();
         let mut pixel_colors = Vec::new();
         let bg_pallette = Self::dmg_pallette(console.dmg_bg_pallette);
@@ -164,7 +164,7 @@ impl GBEmu {
         for i in 0..144 {
             let mut pixel_chunk = ScreenPixel { color: Color32::PLACEHOLDER, x: -1.0, y: -1.0, width: 0.0};
             for j in 0..160 {
-                let pixel_color = match (*internal_screen)[i][j].palette {
+                let pixel_color = match (internal_screen)[i][j].palette {
                     None => bg_pallette[internal_screen[i][j].color as usize],
                     Some(pallette) => {
                         if pallette == 0 {
