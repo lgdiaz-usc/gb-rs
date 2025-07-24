@@ -238,6 +238,12 @@ impl GBConsole {
         u16::from_le_bytes([lsb, msb])
     }
 
+    pub fn read_bulk(&mut self, start_address: u16, end_address: u16) -> Vec<u8> {
+        (start_address..=end_address)
+            .map(|address| self.read(address))
+            .collect()
+    }
+
     fn write(&mut self, address: u16, value: u8) {
         //Cartrige ROM
         if address < 0x8000 {
